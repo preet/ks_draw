@@ -1,0 +1,523 @@
+/*
+   Copyright (C) 2015 Preet Desai (preet.desai@gmail.com)
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+*/
+
+#ifndef KS_DRAW_RENDER_SYSTEM_HPP
+#define KS_DRAW_RENDER_SYSTEM_HPP
+
+#include <ks/gl/KsGLImplementation.hpp>
+#include <ks/gl/KsGLCommands.hpp>
+#include <ks/gl/KsGLUniform.hpp>
+
+#include <ks/ecs/KsEcs.hpp>
+
+#include <ks/draw/KsDrawSystem.hpp>
+#include <ks/draw/KsDrawRenderStats.hpp>
+#include <ks/draw/KsDrawDebugTextDrawStage.hpp>
+#include <ks/draw/KsDrawDrawCallUpdater.hpp>
+
+namespace ks
+{
+    namespace draw
+    {
+        // ============================================================= //
+        // ============================================================= //
+
+        class MaxShadersReached : public ks::Exception
+        {
+        public:
+            MaxShadersReached(std::string msg) :
+                ks::Exception(ks::Exception::ErrorLevel::ERROR,std::move(msg)) {}
+
+            ~MaxShadersReached() = default;
+        };
+
+        // ============================================================= //
+        // ============================================================= //
+
+        template<typename SceneKeyType,typename DrawKeyType>
+        class RenderSystem : public System
+        {
+            // NOTE: gcc requires scope to be qualified when
+            // the alias name matches another class/template name
+            using ListUniformListsById =
+                std::vector<std::pair<Id,shared_ptr<ListUniformUPtrs>>>;
+
+            using RenderData = draw::RenderData<DrawKeyType>;
+
+            using RenderDataComponentList =
+                ecs::ComponentList<SceneKeyType,RenderData>;
+
+            using DrawCall = draw::DrawCall<DrawKeyType>;
+
+            using DrawStage = draw::DrawStage<DrawKeyType>;
+
+            using DebugTextDrawStage = draw::DebugTextDrawStage<DrawKeyType>;
+
+        public:
+            RenderSystem(ecs::Scene<SceneKeyType>* scene) :
+                m_scene(scene),
+                m_state_set(make_unique<gl::StateSet>()),
+                m_init(false),
+                m_waiting_on_sync(false)
+            {
+                // Create the RenderData component list
+                m_scene->template RegisterComponentList<RenderData>(
+                            make_unique<RenderDataComponentList>(*m_scene));
+
+                m_cmlist_render_data =
+                        static_cast<RenderDataComponentList*>(
+                            m_scene->template GetComponentList<RenderData>());
+
+
+                // Reserve index 0 for resource lists and counters
+                m_graph_draw_stages_async.AddNode(nullptr);
+                m_list_shaders_async.Add(nullptr);
+
+
+                // Set initial sync state
+                m_sync_draw_stages = false;
+                m_sync_shaders = false;
+
+
+                // Create the debug text draw stage
+                m_debug_text_draw_stage =
+                        make_unique<DebugTextDrawStage>();
+            }
+
+            ~RenderSystem() = default;
+
+            std::string GetDesc() const
+            {
+                return "RenderSystem";
+            }
+
+            std::atomic<bool>& GetWaitingOnSyncFlag()
+            {
+                return m_waiting_on_sync;
+            }
+
+            RenderDataComponentList* GetRenderDataComponentList() const
+            {
+                return m_cmlist_render_data;
+            }
+
+            // ============================================================= //
+
+            Id RegisterDrawStage(shared_ptr<DrawStage> draw_stage)
+            {
+                // Add to async list
+                Id const index =
+                        m_graph_draw_stages_async.AddNode(
+                            draw_stage);
+
+                m_sync_draw_stages = true;
+                return index;
+            }
+
+            void RemoveDrawStage(Id index)
+            {
+                m_graph_draw_stages_async.RemoveNode(index,false);
+                m_sync_draw_stages = true;
+            }
+
+            void AddDrawStageDependency(Id from,Id to)
+            {
+                m_graph_draw_stages_async.AddEdge(from,to);
+                m_sync_draw_stages = true;
+            }
+
+            void RemoveDrawStageDependency(Id from,Id to)
+            {
+                m_graph_draw_stages_async.RemoveEdge(from,to);
+                m_sync_draw_stages = true;
+            }
+
+            // ============================================================= //
+
+            Id RegisterShader(std::string shader_desc,
+                              std::string shader_source_vsh,
+                              std::string shader_source_fsh)
+            {
+                if(m_list_shaders_async.GetCount() == k_max_shaders)
+                {
+                    throw MaxShadersReached(
+                                m_log_prefix+
+                                "Max Shader limit reached ("+
+                                ks::to_string(k_max_shaders)+")");
+                }
+
+                // Add to async list
+                uint const index =
+                        m_list_shaders_async.Add(
+                            make_shared<gl::ShaderProgram>(
+                                shader_source_vsh,
+                                shader_source_fsh));
+
+                m_list_shaders_async.Get(index)->SetDesc(
+                            std::move(shader_desc));
+
+                // Add to list of shaders to call GLInit on
+                m_list_shaders_init.push_back(
+                            m_list_shaders_async.Get(index).get());
+
+                m_sync_shaders = true;
+                return index;
+            }
+
+            void RemoveShader(Id index)
+            {
+                // Add to list of shaders to call GLCleanUp on
+                m_list_shaders_cleanup.push_back(
+                            m_list_shaders_async.Get(index).get());
+
+                // Remove from async list
+                m_list_shaders_async.Remove(index);
+
+                m_sync_shaders = true;
+            }
+
+            // ============================================================= //
+
+            void Update(time_point const &,
+                        time_point const &)
+            {
+                m_stats.ClearUpdateStats();
+                auto timing_start = std::chrono::high_resolution_clock::now();
+
+                std::vector<PairIds> list_ent_rd;
+
+                auto &list_entities = m_scene->GetEntityList();
+
+                // Get the current list of Drawable entities
+                auto const drawable_mask =
+                        ecs::Scene<SceneKeyType>::template
+                            GetComponentMask<RenderData>();
+
+                auto &list_render_data =
+                        m_cmlist_render_data->GetSparseList();
+
+
+                for(uint ent_id=0; ent_id < list_entities.size(); ent_id++)
+                {
+                    if((list_entities[ent_id].mask & drawable_mask) == drawable_mask)
+                    {
+                        RenderData& render_data = list_render_data[ent_id];
+                        list_ent_rd.emplace_back(ent_id,render_data.GetUniqueId());
+                    }
+                }
+
+                m_draw_call_updater.Update(list_ent_rd,list_render_data);
+
+                auto timing_end = std::chrono::high_resolution_clock::now();
+                m_stats.update_ms = std::chrono::duration_cast<
+                        std::chrono::microseconds>(
+                            timing_end-timing_start).count()/1000.0;
+            }
+
+            // ============================================================= //
+
+            void Sync()
+            {
+                if(!m_init) {
+                    initialize();
+                }
+
+                auto timing_start = std::chrono::high_resolution_clock::now();
+
+                syncDrawStages();
+                syncShaders();
+                syncBuffers(); // must be called after GeometryUpdateTask::Update()
+
+
+                m_draw_call_updater.Sync(m_list_draw_calls);
+
+                auto &list_render_data =
+                        m_cmlist_render_data->GetSparseList();
+
+                // Copy over Uniforms to each added DrawCall
+                for(auto const ent_id : m_draw_call_updater.GetAddedEntities())
+                {
+                    auto& render_data = list_render_data[ent_id];
+                    auto& draw_call = m_list_draw_calls[ent_id];
+
+                    draw_call.list_uniforms = render_data.GetUniformList();
+                }
+
+                // Create the list of current transparent and opaque
+                // DrawCalls sorted by stage
+
+                m_list_opq_draw_calls_by_stage.resize(
+                            m_list_draw_stages_sync.size());
+
+                m_list_xpr_draw_calls_by_stage.resize(
+                            m_list_draw_stages_sync.size());
+
+                for(uint i=0; i < m_list_draw_stages_sync.size(); i++)
+                {
+                    m_list_opq_draw_calls_by_stage[i].clear();
+                    m_list_xpr_draw_calls_by_stage[i].clear();
+                }
+
+                for(uint ent_id=0; ent_id < m_list_draw_calls.size(); ent_id++)
+                {
+                    auto& draw_call = m_list_draw_calls[ent_id];
+
+                    if(draw_call.valid)
+                    {
+                        auto& render_data = list_render_data[ent_id];
+                        draw_call.key = render_data.GetKey();
+
+                        auto& list_draw_calls_by_stage =
+                                (render_data.GetTransparency() == Transparency::Opaque) ?
+                                    m_list_opq_draw_calls_by_stage :
+                                    m_list_xpr_draw_calls_by_stage;
+
+                        for(auto stage : render_data.GetDrawStages()) {
+                            list_draw_calls_by_stage[stage].push_back(ent_id);
+                        }
+
+                        // We can sync individual uniforms here as well
+                        // since all draw_calls are being iterated over
+                        if(draw_call.list_uniforms) {
+                            auto& list_uniforms = *(draw_call.list_uniforms);
+                            for(auto& uniform : list_uniforms) {
+                                uniform->Sync();
+                            }
+                        }
+                    }
+                }
+
+                auto timing_end = std::chrono::high_resolution_clock::now();
+                m_stats.sync_ms = std::chrono::duration_cast<
+                        std::chrono::microseconds>(
+                            timing_end-timing_start).count()/1000.0;
+
+                m_stats.GenUpdateText();
+            }
+
+            void syncDrawStages()
+            {
+                // DrawStages
+                if(m_sync_draw_stages)
+                {
+                    // Sync the list of DrawStages
+                    auto const &list_graph_nodes =
+                            m_graph_draw_stages_async.GetSparseNodeList();
+
+                    m_list_draw_stages_sync.resize(list_graph_nodes.size());
+
+                    for(uint i=0; i < m_list_draw_stages_sync.size(); i++)
+                    {
+                        if(list_graph_nodes[i].valid) {
+                            m_list_draw_stages_sync[i] = list_graph_nodes[i].value;
+                        }
+                        else {
+                            m_list_draw_stages_sync[i] = nullptr;
+                        }
+                    }
+
+                    // Sync the ordered DrawStage indices
+                    m_list_draw_stage_idxs_sync =
+                            m_graph_draw_stages_async.
+                                GetTopologicallySorted();
+
+                    // Remove the invalid stage (0)
+                    for(auto it = m_list_draw_stage_idxs_sync.begin();
+                        it != m_list_draw_stage_idxs_sync.end();++it)
+                    {
+                        if(*it == 0) {
+                            m_list_draw_stage_idxs_sync.erase(it);
+                            break;
+                        }
+                    }
+
+                    m_sync_draw_stages = false;
+                }
+            }
+
+            void syncShaders()
+            {
+                // Shaders
+                if(m_sync_shaders)
+                {
+                    for(auto &shader : m_list_shaders_cleanup) {
+                        shader->GLCleanUp();
+                    }
+
+                    for(auto &shader : m_list_shaders_init) {
+                        shader->GLInit();
+                    }
+                    m_list_shaders_cleanup.clear();
+                    m_list_shaders_init.clear();
+
+                    // sync
+                    m_list_shaders_sync = m_list_shaders_async.GetList();
+                    m_sync_shaders = false;
+                }
+            }
+
+            void syncBuffers()
+            {
+                // Init new buffers
+                for(gl::Buffer* buff : m_draw_call_updater.GetBuffersToInit()) {
+                    bool ok = buff->GLInit();
+                    assert(ok);
+                }
+
+                // Sync updated buffers
+                for(gl::Buffer* buff : m_draw_call_updater.GetBuffersToSync()) {
+                    buff->GLBind();
+                    buff->GLSync();
+                }
+
+                // Save newly created buffers
+                m_list_buffers.insert(
+                            m_list_buffers.end(),
+                            std::make_move_iterator(
+                                m_draw_call_updater.GetNewBuffers().begin()),
+                            std::make_move_iterator(
+                                m_draw_call_updater.GetNewBuffers().end()));
+
+                // Update stats
+                m_stats.buffer_count = m_list_buffers.size();
+
+                for(auto &buff : m_list_buffers) {
+                    m_stats.buffer_mem_bytes += buff->GetSizeBytes();
+                }
+            }
+
+            // ============================================================= //
+
+            void Render()
+            {
+                if(!m_init) {
+                    return;
+                }
+
+                m_stats.ClearRenderStats();
+                auto timing_start = std::chrono::high_resolution_clock::now();
+
+                DrawParams<DrawKeyType> stage_params;
+                stage_params.state_set = m_state_set.get();
+                stage_params.list_shaders = &m_list_shaders_sync;
+                stage_params.list_draw_calls = &m_list_draw_calls;
+
+                for(auto stage : m_list_draw_stage_idxs_sync)
+                {
+                    stage_params.list_opq_draw_calls =
+                            &m_list_opq_draw_calls_by_stage[stage];
+
+                    stage_params.list_xpr_draw_calls =
+                            &m_list_xpr_draw_calls_by_stage[stage];
+
+                    auto& draw_stage = m_list_draw_stages_sync[stage];
+                    draw_stage->Render(stage_params);
+
+                    auto& stage_stats = draw_stage->GetStats();
+                    m_stats.shader_switches += stage_stats.shader_switches;
+                    m_stats.texture_switches += stage_stats.texture_switches;
+                    m_stats.raster_ops += stage_stats.raster_ops;
+                    m_stats.draw_calls += stage_stats.draw_calls;
+                }
+
+                // Update stats
+                auto timing_end = std::chrono::high_resolution_clock::now();
+                m_stats.render_ms = std::chrono::duration_cast<
+                        std::chrono::microseconds>(
+                            timing_end-timing_start).count()/1000.0;
+
+                // Render debug text
+                m_stats.GenRenderText();
+
+                glm::vec4 const text_color{1,1,1,1};
+                std::string render_debug_text =
+                        m_stats.render_text+
+                        m_stats.update_text;
+
+                m_debug_text_draw_stage->SetText(
+                            glm::vec2{-1,-0.5},
+                            glm::vec2{0,-1},
+                            text_color,
+                            render_debug_text);
+
+                m_debug_text_draw_stage->Render(stage_params);
+            }
+
+        private:
+            void initialize()
+            {
+                assert(!m_init);
+                ks::gl::Implementation::GLCapture();
+                m_state_set->CaptureState();
+
+                if(m_state_set->GetPixelUnpackAlignment() != 1) {
+                    m_state_set->SetPixelUnpackAlignment(1);
+                }
+
+                m_init = true;
+            }
+
+            // ============================================================= //
+
+            u64 const k_one{1};
+            u64 const k_max_shaders{(k_one << DrawKeyType::k_bits_shader)};
+
+            ecs::Scene<SceneKeyType>* const m_scene;
+            unique_ptr<gl::StateSet> const m_state_set;
+
+            RenderDataComponentList* m_cmlist_render_data;
+
+            bool m_init;
+            std::atomic<bool> m_waiting_on_sync;
+
+            DrawCallUpdater<DrawKeyType> m_draw_call_updater;
+
+            // == DrawStages == //
+            bool m_sync_draw_stages;
+            std::vector<u8> m_list_draw_stage_idxs_sync; // topo sorted
+            std::vector<shared_ptr<DrawStage>> m_list_draw_stages_sync; // sparse
+            Graph<shared_ptr<DrawStage>,u8> m_graph_draw_stages_async;
+
+            unique_ptr<DebugTextDrawStage> m_debug_text_draw_stage;
+
+            // == Shaders == //
+            bool m_sync_shaders;
+            std::vector<shared_ptr<gl::ShaderProgram>> m_list_shaders_sync;
+            RecycleIndexList<shared_ptr<gl::ShaderProgram>> m_list_shaders_async;
+            std::vector<gl::ShaderProgram*> m_list_shaders_init;
+            std::vector<gl::ShaderProgram*> m_list_shaders_cleanup;
+
+            // == DrawCalls == //
+            std::vector<DrawCall> m_list_draw_calls;
+            std::vector<std::vector<Id>> m_list_opq_draw_calls_by_stage;
+            std::vector<std::vector<Id>> m_list_xpr_draw_calls_by_stage;
+
+            // == Uniform Lists == //
+            // * This list is used to copy the list of uniforms
+            //   shared ptr from RenderData to its corresponding DrawCall
+            ListUniformListsById m_list_upd_list_uniforms;
+
+            // == Buffers == //
+            std::vector<shared_ptr<gl::Buffer>> m_list_buffers;
+
+            // == debug == //
+            std::string const m_log_prefix{"draw::RenderSystem: "};
+            RenderStats m_stats;
+        };
+    }
+}
+
+#endif // KS_DRAW_RENDER_SYSTEM_HPP
