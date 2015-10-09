@@ -191,6 +191,18 @@ namespace ks
 
             // ============================================================= //
 
+            Id RegisterSyncCallback(std::function<void()> cb)
+            {
+                return m_list_sync_cbs.Add(std::move(cb));
+            }
+
+            void RemoveSyncCallback(Id cb_id)
+            {
+                m_list_sync_cbs.Remove(cb_id);
+            }
+
+            // ============================================================= //
+
             void Update(time_point const &,
                         time_point const &)
             {
@@ -300,6 +312,9 @@ namespace ks
                     }
                 }
 
+                // Sync callbacks last
+                syncCallbacks();
+
                 auto timing_end = std::chrono::high_resolution_clock::now();
                 m_stats.sync_ms = std::chrono::duration_cast<
                         std::chrono::microseconds>(
@@ -396,6 +411,16 @@ namespace ks
 
                 for(auto &buff : m_list_buffers) {
                     m_stats.buffer_mem_bytes += buff->GetSizeBytes();
+                }
+            }
+
+            void syncCallbacks()
+            {
+                auto& list_callbacks = m_list_sync_cbs.GetList();
+                for(auto& callback : list_callbacks) {
+                    if(callback) {
+                        callback();
+                    }
                 }
             }
 
@@ -499,6 +524,9 @@ namespace ks
             RecycleIndexList<shared_ptr<gl::ShaderProgram>> m_list_shaders_async;
             std::vector<gl::ShaderProgram*> m_list_shaders_init;
             std::vector<gl::ShaderProgram*> m_list_shaders_cleanup;
+
+            // == Sync Callbacks == //
+            RecycleIndexList<std::function<void()>> m_list_sync_cbs;
 
             // == DrawCalls == //
             std::vector<DrawCall> m_list_draw_calls;
