@@ -48,12 +48,17 @@ namespace ks
             bool valid;
         };
 
+        using StateSetCb = std::function<void(gl::StateSet*)>;
+
         // * Params required to issue a set of DrawCalls for a given stage
         template<typename DrawKeyType>
         struct DrawParams
         {
             gl::StateSet* state_set;
             std::vector<shared_ptr<gl::ShaderProgram>>* list_shaders;
+            std::vector<StateSetCb>* list_depth_configs;
+            std::vector<StateSetCb>* list_blend_configs;
+            std::vector<StateSetCb>* list_stencil_configs;
             std::vector<DrawCall<DrawKeyType>>* list_draw_calls;
             std::vector<Id>* list_opq_draw_calls;
             std::vector<Id>* list_xpr_draw_calls;

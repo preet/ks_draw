@@ -66,6 +66,40 @@ namespace ks
 
             using DebugTextDrawStage = draw::DebugTextDrawStage<DrawKeyType>;
 
+            // TODO: look into using small_vector (folly has an implementation)
+            template<typename DataT,typename IndexT=uint>
+            struct RecycleIndexListSync
+            {
+                RecycleIndexList<u8> list_async;
+                std::vector<std::pair<IndexT,DataT>> list_add;
+                std::vector<IndexT> list_rem;
+                std::vector<DataT> list_sync;
+                bool sync_required;
+
+                void Sync()
+                {
+                    if(sync_required)
+                    {
+                        for(auto rem_id : list_rem)
+                        {
+                            list_sync[rem_id] = DataT(); // TODO std::move?
+                            list_async.Remove(rem_id);
+                        }
+
+                        list_sync.resize(list_async.GetList().size());
+
+                        for(auto id_data : list_add)
+                        {
+                            list_sync[id_data.first] = std::move(id_data.second);
+                        }
+
+                        list_rem.clear();
+                        list_add.clear();
+                        sync_required = false;
+                    }
+                }
+            };
+
         public:
             RenderSystem(ecs::Scene<SceneKeyType>* scene) :
                 m_scene(scene),
@@ -86,6 +120,19 @@ namespace ks
                 m_graph_draw_stages_async.AddNode(nullptr);
                 m_list_shaders_async.Add(nullptr);
 
+                StateSetCb state_set_cb_no_op = [](gl::StateSet*){};
+
+                m_list_depth_configs.list_async.Add(0);
+                m_list_depth_configs.list_add.emplace_back(
+                            0,state_set_cb_no_op);
+
+                m_list_blend_configs.list_async.Add(0);
+                m_list_blend_configs.list_add.emplace_back(
+                            0,state_set_cb_no_op);
+
+                m_list_stencil_configs.list_async.Add(0);
+                m_list_stencil_configs.list_add.emplace_back(
+                            0,state_set_cb_no_op);
 
                 // Set initial sync state
                 m_sync_draw_stages = false;
@@ -191,6 +238,66 @@ namespace ks
 
             // ============================================================= //
 
+            Id RegisterDepthConfig(StateSetCb depth_config)
+            {
+                auto new_id = m_list_depth_configs.list_async.Add(0);
+
+                m_list_depth_configs.list_add.emplace_back(
+                            new_id,std::move(depth_config));
+
+                m_list_depth_configs.sync_required = true;
+
+                return new_id;
+            }
+
+            void RemoveDepthConfig(Id depth_config_id)
+            {
+                m_list_depth_configs.list_rem.push_back(depth_config_id);
+                m_list_depth_configs.sync_required = true;
+            }
+
+            // ============================================================= //
+
+            Id RegisterBlendConfig(StateSetCb blend_config)
+            {
+                auto new_id = m_list_blend_configs.list_async.Add(0);
+
+                m_list_blend_configs.list_add.emplace_back(
+                            new_id,std::move(blend_config));
+
+                m_list_blend_configs.sync_required = true;
+
+                return new_id;
+            }
+
+            void RemoveBlendConfig(Id blend_config_id)
+            {
+                m_list_blend_configs.list_rem.push_back(blend_config_id);
+                m_list_blend_configs.sync_required = true;
+            }
+
+            // ============================================================= //
+
+            Id RegisterStencilConfig(StateSetCb stencil_config)
+            {
+                auto new_id = m_list_stencil_configs.list_async.Add(0);
+
+                m_list_stencil_configs.list_add.emplace_back(
+                            new_id,std::move(stencil_config));
+
+                m_list_stencil_configs.sync_required = true;
+
+                return new_id;
+            }
+
+            void RemoveStencilConfig(Id stencil_config_id)
+            {
+                m_list_stencil_configs.list_rem.push_back(stencil_config_id);
+                m_list_stencil_configs.sync_required = true;
+            }
+
+            // ============================================================= //
+
             Id RegisterSyncCallback(std::function<void()> cb)
             {
                 return m_list_sync_cbs.Add(std::move(cb));
@@ -252,7 +359,7 @@ namespace ks
                 syncDrawStages();
                 syncShaders();
                 syncBuffers(); // must be called after GeometryUpdateTask::Update()
-
+                syncRasterConfigs();
 
                 m_draw_call_updater.Sync(m_list_draw_calls);
 
@@ -323,6 +430,68 @@ namespace ks
                 m_stats.GenUpdateText();
             }
 
+
+            // ============================================================= //
+
+            void Render()
+            {
+                if(!m_init) {
+                    return;
+                }
+
+                m_stats.ClearRenderStats();
+                auto timing_start = std::chrono::high_resolution_clock::now();
+
+                DrawParams<DrawKeyType> stage_params;
+                stage_params.state_set = m_state_set.get();
+                stage_params.list_shaders = &m_list_shaders_sync;
+                stage_params.list_depth_configs = &(m_list_depth_configs.list_sync);
+                stage_params.list_blend_configs = &(m_list_blend_configs.list_sync);
+                stage_params.list_stencil_configs = &(m_list_stencil_configs.list_sync);
+                stage_params.list_draw_calls = &m_list_draw_calls;
+
+                for(auto stage : m_list_draw_stage_idxs_sync)
+                {
+                    stage_params.list_opq_draw_calls =
+                            &m_list_opq_draw_calls_by_stage[stage];
+
+                    stage_params.list_xpr_draw_calls =
+                            &m_list_xpr_draw_calls_by_stage[stage];
+
+                    auto& draw_stage = m_list_draw_stages_sync[stage];
+                    draw_stage->Render(stage_params);
+
+                    auto& stage_stats = draw_stage->GetStats();
+                    m_stats.shader_switches += stage_stats.shader_switches;
+                    m_stats.texture_switches += stage_stats.texture_switches;
+                    m_stats.raster_ops += stage_stats.raster_ops;
+                    m_stats.draw_calls += stage_stats.draw_calls;
+                }
+
+                // Update stats
+                auto timing_end = std::chrono::high_resolution_clock::now();
+                m_stats.render_ms = std::chrono::duration_cast<
+                        std::chrono::microseconds>(
+                            timing_end-timing_start).count()/1000.0;
+
+                // Render debug text
+                m_stats.GenRenderText();
+
+                glm::vec4 const text_color{1,1,1,1};
+                std::string render_debug_text =
+                        m_stats.render_text+
+                        m_stats.update_text;
+
+                m_debug_text_draw_stage->SetText(
+                            glm::vec2{-1,-0.5},
+                            glm::vec2{0,-1},
+                            text_color,
+                            render_debug_text);
+
+                m_debug_text_draw_stage->Render(stage_params);
+            }
+
+        private:
             void syncDrawStages()
             {
                 // DrawStages
@@ -384,6 +553,13 @@ namespace ks
                 }
             }
 
+            void syncRasterConfigs()
+            {
+                m_list_depth_configs.Sync();
+                m_list_blend_configs.Sync();
+                m_list_stencil_configs.Sync();
+            }
+
             void syncBuffers()
             {
                 // Init new buffers
@@ -424,64 +600,7 @@ namespace ks
                 }
             }
 
-            // ============================================================= //
 
-            void Render()
-            {
-                if(!m_init) {
-                    return;
-                }
-
-                m_stats.ClearRenderStats();
-                auto timing_start = std::chrono::high_resolution_clock::now();
-
-                DrawParams<DrawKeyType> stage_params;
-                stage_params.state_set = m_state_set.get();
-                stage_params.list_shaders = &m_list_shaders_sync;
-                stage_params.list_draw_calls = &m_list_draw_calls;
-
-                for(auto stage : m_list_draw_stage_idxs_sync)
-                {
-                    stage_params.list_opq_draw_calls =
-                            &m_list_opq_draw_calls_by_stage[stage];
-
-                    stage_params.list_xpr_draw_calls =
-                            &m_list_xpr_draw_calls_by_stage[stage];
-
-                    auto& draw_stage = m_list_draw_stages_sync[stage];
-                    draw_stage->Render(stage_params);
-
-                    auto& stage_stats = draw_stage->GetStats();
-                    m_stats.shader_switches += stage_stats.shader_switches;
-                    m_stats.texture_switches += stage_stats.texture_switches;
-                    m_stats.raster_ops += stage_stats.raster_ops;
-                    m_stats.draw_calls += stage_stats.draw_calls;
-                }
-
-                // Update stats
-                auto timing_end = std::chrono::high_resolution_clock::now();
-                m_stats.render_ms = std::chrono::duration_cast<
-                        std::chrono::microseconds>(
-                            timing_end-timing_start).count()/1000.0;
-
-                // Render debug text
-                m_stats.GenRenderText();
-
-                glm::vec4 const text_color{1,1,1,1};
-                std::string render_debug_text =
-                        m_stats.render_text+
-                        m_stats.update_text;
-
-                m_debug_text_draw_stage->SetText(
-                            glm::vec2{-1,-0.5},
-                            glm::vec2{0,-1},
-                            text_color,
-                            render_debug_text);
-
-                m_debug_text_draw_stage->Render(stage_params);
-            }
-
-        private:
             void initialize()
             {
                 assert(!m_init);
@@ -524,6 +643,11 @@ namespace ks
             RecycleIndexList<shared_ptr<gl::ShaderProgram>> m_list_shaders_async;
             std::vector<gl::ShaderProgram*> m_list_shaders_init;
             std::vector<gl::ShaderProgram*> m_list_shaders_cleanup;
+
+            // == Raster Op Configs == //
+            RecycleIndexListSync<StateSetCb> m_list_depth_configs;
+            RecycleIndexListSync<StateSetCb> m_list_blend_configs;
+            RecycleIndexListSync<StateSetCb> m_list_stencil_configs;
 
             // == Sync Callbacks == //
             RecycleIndexList<std::function<void()>> m_list_sync_cbs;

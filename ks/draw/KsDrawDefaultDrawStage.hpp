@@ -168,7 +168,7 @@ namespace ks
 
         private:
             void setupState(DrawParams<DrawKeyType>& p,
-                            DrawKeyType const prev_key,
+                            DrawKeyType& prev_key,
                             DrawKeyType const curr_key)
             {
                 if(!(prev_key == curr_key))
@@ -184,20 +184,26 @@ namespace ks
                         this->m_stats.shader_switches++;
                     }
 
-//                    if(prev_key.GetDepthConfig() != curr_key.GetDepthConfig())
-//                    {
-//                        //
-//                    }
+                    auto const depth_config = curr_key.GetDepthConfig();
+                    if((prev_key.GetDepthConfig() != depth_config) && (depth_config > 0))
+                    {
+                        auto& list_depth_configs = *(p.list_depth_configs);
+                        list_depth_configs[depth_config](p.state_set);
+                    }
 
-//                    if(prev_key.GetBlendConfig() != curr_key.GetBlendConfig())
-//                    {
-//                        //
-//                    }
+                    auto const blend_config = curr_key.GetBlendConfig();
+                    if((prev_key.GetBlendConfig() != blend_config) && (blend_config > 0))
+                    {
+                        auto& list_blend_configs = *(p.list_blend_configs);
+                        list_blend_configs[blend_config](p.state_set);
+                    }
 
-//                    if(prev_key.GetStencilConfig() != curr_key.GetStencilConfig())
-//                    {
-//                        //
-//                    }
+                    auto const stencil_config = curr_key.GetStencilConfig();
+                    if((prev_key.GetStencilConfig() != stencil_config) && (stencil_config > 0))
+                    {
+                        auto& list_stencil_configs = *(p.list_stencil_configs);
+                        list_stencil_configs[curr_key.GetStencilConfig()](p.state_set);
+                    }
 
 //                    if(prev_key.GetTextureSet() != curr_key.GetTextureSet())
 //                    {
@@ -208,6 +214,8 @@ namespace ks
 //                    {
 //                        //
 //                    }
+
+                    prev_key = curr_key;
                 }
             }
         };
