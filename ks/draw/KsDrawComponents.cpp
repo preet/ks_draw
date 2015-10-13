@@ -158,6 +158,11 @@ namespace ks
 
         void Geometry::SetVertexBufferUpdated(uint index)
         {
+            for(auto const idx : m_list_upd_vx) {
+                if(idx == index) {
+                    return;
+                }
+            }
             m_list_upd_vx.push_back(index);
             m_upd_geometry = true;
         }
@@ -212,9 +217,19 @@ namespace ks
             return m_geometry;
         }
 
+        bool BatchData::GetRebuild() const
+        {
+            return m_rebuild;
+        }
+
         void BatchData::SetGroupId(Id group_id)
         {
             m_group_id = group_id;
+        }
+
+        void BatchData::SetRebuild(bool rebuild)
+        {
+            m_rebuild = rebuild;
         }
 
         // ============================================================= //

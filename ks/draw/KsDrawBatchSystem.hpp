@@ -26,6 +26,10 @@ namespace ks
 {
     namespace draw
     {
+
+        // ============================================================= //
+        // ============================================================= //
+
         namespace detail
         {
             inline void IncrementListIx(u16* ix_ptr, u16 ix_count, u16 inc)
@@ -70,6 +74,8 @@ namespace ks
             };
         }
 
+        // ============================================================= //
+        // ============================================================= //
 
         template<typename SceneKeyType,
                  typename DrawKeyType>
@@ -87,7 +93,7 @@ namespace ks
                 std::vector<Id> list_ents_curr;
                 std::vector<Id> list_ents_rem;
                 std::vector<Id> list_ents_upd;
-                std::vector<Geometry*> list_gm_upd;
+                std::vector<Geometry*> list_gm_curr; // parallel w list_ents_curr
             };
 
         public:
@@ -216,7 +222,7 @@ namespace ks
                         batch_group->list_ents_curr.clear();
                         batch_group->list_ents_rem.clear();
                         batch_group->list_ents_upd.clear();
-                        batch_group->list_gm_upd.clear();
+                        batch_group->list_gm_curr.clear();
                     }
                 }
 
@@ -243,21 +249,18 @@ namespace ks
                             // insert for Entity Ids
                             batch_group->list_ents_curr.push_back(ent_id);
 
-                            // Check for updated
                             auto& geometry = batch_data.GetGeometry();
-                            if(geometry.GetUpdatedGeometry())
+                            batch_group->list_gm_curr.push_back(&geometry);
+
+                            // Check for updated
+                            if(batch_data.GetRebuild())
                             {
                                 batch_group->rebuild = true;
                                 batch_group->list_ents_upd.push_back(ent_id);
-                                batch_group->list_gm_upd.push_back(&geometry);
                             }
                         }
                     }
                 }
-
-//                auto const drawable_mask =
-//                        ecs::Scene<SceneKeyType>::template
-//                            GetComponentMask<RenderData>();
 
                 std::vector<uint> list_sf_batch_groups;
                 std::vector<uint> list_mf_batch_groups;
@@ -267,16 +270,6 @@ namespace ks
                     auto& batch_group = m_list_batch_groups[group];
                     if(batch_group)
                     {
-                        // Check if the batch has a valid corresponding RenderData
-                        // TODO: Is this check really necessary? Shouldnt
-                        //       it be okay to expect that the merged entity
-                        //       not be deleted?
-//                        auto const merged_ent = batch_group->merged_ent;
-//                        if((list_entities[merged_ent].mask && drawable_mask) != drawable_mask)
-//                        {
-//                            // ERROR
-//                        }
-
                         auto& batch = batch_group->batch;
                         if(batch->GetUpdatePriority()==UpdatePriority::SingleFrame) {
                             list_sf_batch_groups.push_back(group);
@@ -287,7 +280,8 @@ namespace ks
                     }
                 }
 
-                updateBatchGroupsSF(list_sf_batch_groups);
+                updateBatchGroupsSF(list_sf_batch_groups,
+                                    list_batch_data);
 
                 updateBatchTask(list_mf_batch_groups,
                                 list_batch_data,
@@ -332,7 +326,8 @@ namespace ks
             }
 
         private:
-            void updateBatchGroupsSF(std::vector<uint> const &list_sf_batch_groups)
+            void updateBatchGroupsSF(std::vector<uint> const &list_sf_batch_groups,
+                                     std::vector<BatchData>& list_batch_data)
             {
                 for(auto const group : list_sf_batch_groups)
                 {
@@ -363,15 +358,22 @@ namespace ks
                     {
                         detail::CreateMergedGeometry(
                                     batch->GetBufferLayout(),
-                                    batch_group->list_gm_upd,
+                                    batch_group->list_gm_curr,
                                     batch_group->merged_gm);
 
-
+                        // Clear updates
+                        for(auto ent_id : batch_group->list_ents_upd)
+                        {
+                            auto& batch_data = list_batch_data[ent_id];
+                            batch_data.SetRebuild(false);
+                            batch_data.GetGeometry().ClearGeometryUpdates();
+                        }
 
                         batch_group->merged_gm->SetAllUpdated();
                     }
 
-                    batch_group->list_ents_prev = batch_group->list_ents_curr;
+                    batch_group->list_ents_prev =
+                            batch_group->list_ents_curr;
                 }
             }
 
@@ -426,6 +428,11 @@ namespace ks
                         CopyGeometryBuffers(
                                     list_batch_data[ent_id].GetGeometry(),
                                     m_list_batch_geometry[ent_id]);
+
+                        // Clear updates
+                        auto& batch_data = list_batch_data[ent_id];
+                        batch_data.SetRebuild(false);
+                        batch_data.GetGeometry().ClearGeometryUpdates();
                     }
                 }
             }
@@ -509,6 +516,9 @@ namespace ks
             // be destroyed first)
             ThreadPool m_thread_pool;
         };
+
+        // ============================================================= //
+        // ============================================================= //
     }
 }
 

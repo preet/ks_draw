@@ -381,12 +381,15 @@ namespace ks
             Id GetGroupId() const;
             Geometry& GetGeometry();
             Geometry const & GetGeometry() const;
+            bool GetRebuild() const;
 
             void SetGroupId(Id group_id);
+            void SetRebuild(bool rebuild);
 
         private:
             Id m_group_id{0};
             Geometry m_geometry;
+            bool m_rebuild;
         };
 
         // ============================================================= //

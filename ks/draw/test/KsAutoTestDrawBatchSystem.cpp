@@ -278,6 +278,7 @@ TEST_CASE("ks::draw::BatchSystem")
         auto const ent1 = scene->CreateEntity();
         auto batch_data1 = CreateBatchData(scene.get(),ent1,batch0_id);
         auto geometry_data1 = FillGeometry(batch_data1,2);
+        batch_data1->SetRebuild(true);
 
         batch_system->Update(tp0,tp1);
         REQUIRE(geometry_batch0.GetUpdatedGeometry());
@@ -288,6 +289,7 @@ TEST_CASE("ks::draw::BatchSystem")
         auto const ent2 = scene->CreateEntity();
         auto batch_data2 = CreateBatchData(scene.get(),ent2,batch0_id);
         auto geometry_data2 = FillGeometry(batch_data2,5);
+        batch_data2->SetRebuild(true);
 
         batch_system->Update(tp0,tp1);
         REQUIRE(geometry_batch0.GetUpdatedGeometry());
@@ -295,10 +297,11 @@ TEST_CASE("ks::draw::BatchSystem")
         REQUIRE(geometry_batch0.GetIndexBuffer()->size() == GetIndexSizeBytes(7));
 
         // Update Entity 1's geometry
-        geometry_data1->GetVertexBuffer(0) = std::move(GenVertexData(10));
-        geometry_data1->GetIndexBuffer() = std::move(GenIndexData(10));
+        geometry_data1->GetVertexBuffer(0) = GenVertexData(10);
+        geometry_data1->GetIndexBuffer() = GenIndexData(10);
         geometry_data1->SetVertexBufferUpdated(0);
         geometry_data1->SetIndexBufferUpdated();
+        batch_data1->SetRebuild(true);
 
         batch_system->Update(tp0,tp1);
         REQUIRE(geometry_batch0.GetUpdatedGeometry());
@@ -333,6 +336,7 @@ TEST_CASE("ks::draw::BatchSystem")
         auto const ent1 = scene->CreateEntity();
         auto batch_data1 = CreateBatchData(scene.get(),ent1,batch1_id);
         auto geometry_data1 = FillGeometry(batch_data1,2);
+        batch_data1->SetRebuild(true);
 
         // For MultiFrame batches, BatchSystem takes at least
         // one extra Update to set the RenderData
@@ -351,6 +355,7 @@ TEST_CASE("ks::draw::BatchSystem")
         auto const ent2 = scene->CreateEntity();
         auto batch_data2 = CreateBatchData(scene.get(),ent2,batch1_id);
         auto geometry_data2 = FillGeometry(batch_data2,5);
+        batch_data2->SetRebuild(true);
 
         batch_system->Update(tp0,tp1);
         batch_system->WaitOnMultiFrameBatch();
@@ -363,10 +368,11 @@ TEST_CASE("ks::draw::BatchSystem")
         REQUIRE(geometry_batch0.GetIndexBuffer()->size() == GetIndexSizeBytes(7));
 
         // Update Entity 1's geometry
-        geometry_data1->GetVertexBuffer(0) = std::move(GenVertexData(10));
-        geometry_data1->GetIndexBuffer() = std::move(GenIndexData(10));
+        geometry_data1->GetVertexBuffer(0) = GenVertexData(10);
+        geometry_data1->GetIndexBuffer() = GenIndexData(10);
         geometry_data1->SetVertexBufferUpdated(0);
         geometry_data1->SetIndexBufferUpdated();
+        batch_data1->SetRebuild(true);
 
         batch_system->Update(tp0,tp1);
         batch_system->WaitOnMultiFrameBatch();
