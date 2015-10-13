@@ -212,6 +212,11 @@ namespace ks
             return m_geometry;
         }
 
+        void BatchData::SetGroupId(Id group_id)
+        {
+            m_group_id = group_id;
+        }
+
         // ============================================================= //
         // ============================================================= //
     }

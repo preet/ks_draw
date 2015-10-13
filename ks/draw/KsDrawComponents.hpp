@@ -25,7 +25,6 @@
 #include <ks/gl/KsGLIndexBuffer.hpp>
 #include <ks/gl/KsGLUniform.hpp>
 
-//#include <ks/ecs/KsEcs.hpp>// TODO why is this header here?
 #include <ks/shared/KsGraph.hpp>
 
 namespace ks
@@ -382,6 +381,8 @@ namespace ks
             Id GetGroupId() const;
             Geometry& GetGeometry();
             Geometry const & GetGeometry() const;
+
+            void SetGroupId(Id group_id);
 
         private:
             Id m_group_id{0};

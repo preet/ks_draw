@@ -299,6 +299,39 @@ namespace ks
                 m_batch_task->Wait();
             }
 
+            static void CopyGeometryBuffers(Geometry const & from, Geometry& to)
+            {
+                to.GetVertexBuffers().clear();
+
+                for(auto const &vx_data : from.GetVertexBuffers())
+                {
+                    to.GetVertexBuffers().push_back(
+                                make_unique<std::vector<u8>>(*vx_data));
+                }
+
+                if(from.GetIndexBuffer())
+                {
+                    to.GetIndexBuffer() =
+                            make_unique<std::vector<u8>>(
+                                *(from.GetIndexBuffer()));
+                }
+            }
+
+            template<typename T>
+            static void OrderedUniqueInsert(std::vector<T>& list_data,T ins_data)
+            {
+                // lower bound == first value thats greater than or equal
+                auto it = std::lower_bound(list_data.begin(),
+                                           list_data.end(),
+                                           ins_data);
+
+                // insert when: it==end, *it != ins_data (ins_data is greater)
+                if((it==list_data.end()) || (*it != ins_data) ) {
+                    list_data.insert(it,ins_data);
+                }
+            }
+
+        private:
             void updateBatchGroupsSF(std::vector<uint> const &list_sf_batch_groups)
             {
                 for(auto const group : list_sf_batch_groups)
@@ -389,7 +422,7 @@ namespace ks
                     auto& batch_group = m_list_batch_groups[group];
 
                     for(auto const ent_id : batch_group->list_ents_upd)
-                    {                       
+                    {
                         CopyGeometryBuffers(
                                     list_batch_data[ent_id].GetGeometry(),
                                     m_list_batch_geometry[ent_id]);
@@ -461,40 +494,7 @@ namespace ks
             }
 
 
-            static void CopyGeometryBuffers(Geometry const & from, Geometry& to)
-            {
-                to.GetVertexBuffers().clear();
 
-                for(auto const &vx_data : from.GetVertexBuffers())
-                {
-                    to.GetVertexBuffers().push_back(
-                                make_unique<std::vector<u8>>(*vx_data));
-                }
-
-                if(from.GetIndexBuffer())
-                {
-                    to.GetIndexBuffer() =
-                            make_unique<std::vector<u8>>(
-                                *(from.GetIndexBuffer()));
-                }
-            }
-
-
-            template<typename T>
-            static void OrderedUniqueInsert(std::vector<T>& list_data,T ins_data)
-            {
-                // lower bound == first value thats greater than or equal
-                auto it = std::lower_bound(list_data.begin(),
-                                           list_data.end(),
-                                           ins_data);
-
-                // insert when: it==end, *it != ins_data (ins_data is greater)
-                if((it==list_data.end()) || (*it != ins_data) ) {
-                    list_data.insert(it,ins_data);
-                }
-            }
-
-        private:
             ecs::Scene<SceneKeyType>* const m_scene;
             RenderDataComponentList* const m_cmlist_render_data;
 
