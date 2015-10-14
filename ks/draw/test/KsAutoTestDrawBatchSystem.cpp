@@ -104,8 +104,7 @@ namespace test_draw_batch_system
 
             m_batch_system =
                     ks::make_unique<BatchSystem>(
-                        this,
-                        m_render_system->GetRenderDataComponentList());
+                        this);
         }
 
         ~Scene() = default;

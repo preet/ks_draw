@@ -111,10 +111,11 @@ namespace ks
             using RenderDataComponentList =
                 ecs::ComponentList<SceneKeyType,RenderData>;
 
-            BatchSystem(ecs::Scene<SceneKeyType>* scene,
-                        RenderDataComponentList* cmlist_render_data) :
+            BatchSystem(ecs::Scene<SceneKeyType>* scene) :
                 m_scene(scene),
-                m_cmlist_render_data(cmlist_render_data),
+                m_cmlist_render_data(
+                    static_cast<RenderDataComponentList*>(
+                        scene->template GetComponentList<RenderData>())),
                 m_thread_pool(1)
             {
                 // Create the BatchData component list
@@ -154,6 +155,11 @@ namespace ks
             BatchDataComponentList* GetBatchDataComponentList() const
             {
                 return m_cmlist_batch_data;
+            }
+
+            shared_ptr<Batch<DrawKeyType>> const & GetBatch(Id batch_id) const
+            {
+                return m_list_batch_groups[batch_id]->batch;
             }
 
             Id GetBatchEntity(Id batch_id)
