@@ -30,6 +30,11 @@ namespace ks
         // ============================================================= //
         // ============================================================= //
 
+        using BatchPreMergeCallback =
+            std::function<std::vector<Id>(std::vector<Id> const &)>;
+
+        using BatchPreTaskCallback = std::function<void()>;
+
         namespace detail
         {
             inline void IncrementListIx(u16* ix_ptr, u16 ix_count, u16 inc)
@@ -49,14 +54,15 @@ namespace ks
             public:
                 struct BatchDesc
                 {
-                    Id batch_id; // do we need this?
+                    Id batch_id;
                     Id merged_ent;
                     std::vector<Id> list_ents;
                     BufferLayout const * buffer_layout;
                 };
 
                 BatchTask(unique_ptr<std::vector<BatchDesc>> list_batch_desc,
-                          std::vector<Geometry>& list_batch_geometry);
+                          std::vector<Geometry>& list_batch_geometry,
+                          BatchPreMergeCallback pre_merge_callback);
 
                 ~BatchTask();
 
@@ -71,6 +77,7 @@ namespace ks
 
                 unique_ptr<std::vector<BatchDesc>> m_list_batch_desc;
                 std::vector<Geometry>& m_list_batch_geometry;
+                BatchPreMergeCallback m_pre_merge_callback;
             };
         }
 
@@ -93,7 +100,6 @@ namespace ks
                 std::vector<Id> list_ents_curr;
                 std::vector<Id> list_ents_rem;
                 std::vector<Id> list_ents_upd;
-                std::vector<Geometry*> list_gm_curr; // parallel w list_ents_curr
             };
 
         public:
@@ -104,7 +110,6 @@ namespace ks
 
             using RenderDataComponentList =
                 ecs::ComponentList<SceneKeyType,RenderData>;
-
 
             BatchSystem(ecs::Scene<SceneKeyType>* scene,
                         RenderDataComponentList* cmlist_render_data) :
@@ -128,7 +133,8 @@ namespace ks
                 m_batch_task =
                         make_shared<detail::BatchTask>(
                             make_unique<std::vector<detail::BatchTask::BatchDesc>>(),
-                            m_list_batch_geometry);
+                            m_list_batch_geometry,
+                            m_pre_merge_callback_mf);
 
                 // (doesn't do anything except set the Task
                 //  state to finished)
@@ -208,6 +214,36 @@ namespace ks
                 m_list_batch_groups.Remove(batch_id);
             }
 
+            void SetSFPreMergeCallback(BatchPreMergeCallback callback)
+            {
+                m_pre_merge_callback_sf = std::move(callback);
+            }
+
+            void ClearSFPreMergeCallback()
+            {
+                m_pre_merge_callback_sf = nullptr;
+            }
+
+            void SetMFPreTaskCallback(BatchPreTaskCallback callback)
+            {
+                m_pre_task_callback = std::move(callback);
+            }
+
+            void ClearMFPreTaskCallback()
+            {
+                m_pre_task_callback = nullptr;
+            }
+
+            void SetMFPreMergeCallback(BatchPreMergeCallback callback)
+            {
+                m_pre_merge_callback_mf = std::move(callback);
+            }
+
+            void ClearMFPreMergeCallback()
+            {
+                m_pre_merge_callback_mf = nullptr;
+            }
+
             void Update(time_point const &,time_point const &) override
             {
                 // Clear previous list of Batchable entities
@@ -222,7 +258,6 @@ namespace ks
                         batch_group->list_ents_curr.clear();
                         batch_group->list_ents_rem.clear();
                         batch_group->list_ents_upd.clear();
-                        batch_group->list_gm_curr.clear();
                     }
                 }
 
@@ -248,9 +283,6 @@ namespace ks
                             // Note that we automatically get ordered
                             // insert for Entity Ids
                             batch_group->list_ents_curr.push_back(ent_id);
-
-                            auto& geometry = batch_data.GetGeometry();
-                            batch_group->list_gm_curr.push_back(&geometry);
 
                             // Check for updated
                             if(batch_data.GetRebuild())
@@ -356,9 +388,37 @@ namespace ks
 
                     if(batch_group->rebuild)
                     {
+                        std::vector<Geometry*> list_geometry;
+                        list_geometry.reserve(batch_group->list_ents_curr.size());
+
+                        // Allow a callback to modify the list of entities
+                        // that will be merged together. Note we don't save
+                        // the modified list; the original batch_group->
+                        // list_ents_curr must be kept to do proper diffs
+                        if(m_pre_merge_callback_sf)
+                        {
+                            auto list_ents_curr =
+                                    m_pre_merge_callback_sf(
+                                        batch_group->list_ents_curr);
+
+                            for(auto ent_id : list_ents_curr)
+                            {
+                                list_geometry.push_back(
+                                            &(list_batch_data[ent_id].GetGeometry()));
+                            }
+                        }
+                        else
+                        {
+                            for(auto ent_id : batch_group->list_ents_curr)
+                            {
+                                list_geometry.push_back(
+                                            &(list_batch_data[ent_id].GetGeometry()));
+                            }
+                        }
+
                         detail::CreateMergedGeometry(
                                     batch->GetBufferLayout(),
-                                    batch_group->list_gm_curr,
+                                    list_geometry,
                                     batch_group->merged_gm);
 
                         // Clear updates
@@ -467,14 +527,12 @@ namespace ks
 
                         list_render_data[merged_ent].GetGeometry().SetAllUpdated();
 
-                        //
                         auto& batch_group = m_list_batch_groups[batch_id];
                         batch_group->list_ents_prev = batch_group->list_ents_curr;
                     }
                 }
 
-                // Create a description of the current MultiFrame
-                // batch group state
+                // Create a desc of the current MultiFrame batch group state
                 auto list_batch_desc =
                         make_unique<std::vector<detail::BatchTask::BatchDesc>>();
 
@@ -482,20 +540,30 @@ namespace ks
                 {
                     auto& batch_group = m_list_batch_groups[group];
 
-                    list_batch_desc->push_back(
-                                detail::BatchTask::BatchDesc{
-                                    group,
-                                    batch_group->merged_ent,
-                                    batch_group->list_ents_curr,
-                                    batch_group->batch->GetBufferLayout()
-                                });
+                    if(batch_group->rebuild)
+                    {
+                        list_batch_desc->push_back(
+                                    detail::BatchTask::BatchDesc{
+                                        group,
+                                        batch_group->merged_ent,
+                                        batch_group->list_ents_curr,
+                                        batch_group->batch->GetBufferLayout()
+                                    });
+                    }
+                }
+
+                // Invoke the PreTaskCallback if its valid
+                if(m_pre_task_callback)
+                {
+                    m_pre_task_callback();
                 }
 
                 // Launch a new task
                 m_batch_task =
                         make_shared<detail::BatchTask>(
                             std::move(list_batch_desc),
-                            m_list_batch_geometry);
+                            m_list_batch_geometry,
+                            m_pre_merge_callback_mf);
 
                 m_thread_pool.PushBack(m_batch_task);
             }
@@ -509,6 +577,10 @@ namespace ks
             RecycleIndexList<unique_ptr<BatchGroup>> m_list_batch_groups;
             std::vector<Geometry> m_list_batch_geometry;
             shared_ptr<detail::BatchTask> m_batch_task;
+
+            BatchPreMergeCallback m_pre_merge_callback_sf;
+            BatchPreMergeCallback m_pre_merge_callback_mf;
+            BatchPreTaskCallback m_pre_task_callback;
 
             // The thread pool must be destroyed before any resources
             // used by it or the task (like list_batch_geometry) so keep

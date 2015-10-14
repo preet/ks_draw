@@ -92,9 +92,11 @@ namespace ks
             // ============================================================= //
 
             BatchTask::BatchTask(unique_ptr<std::vector<BatchDesc>> list_batch_desc,
-                                 std::vector<Geometry>& list_batch_geometry) :
+                                 std::vector<Geometry>& list_batch_geometry,
+                                 BatchPreMergeCallback pre_merge_callback) :
                 m_list_batch_desc(std::move(list_batch_desc)),
-                m_list_batch_geometry(list_batch_geometry)
+                m_list_batch_geometry(list_batch_geometry),
+                m_pre_merge_callback(std::move(pre_merge_callback))
             {
 
             }
@@ -159,10 +161,26 @@ namespace ks
                     std::vector<Geometry*> list_geometry;
                     list_geometry.reserve(batch_desc.list_ents.size());
 
-                    for(auto ent_id : batch_desc.list_ents)
+                    // Allow a callback to modify the list of entities
+                    // that will be merged together
+                    if(m_pre_merge_callback)
                     {
-                        list_geometry.push_back(
-                                    &(m_list_batch_geometry[ent_id]));
+                        auto list_ents_curr =
+                                m_pre_merge_callback(batch_desc.list_ents);
+
+                        for(auto ent_id : list_ents_curr)
+                        {
+                            list_geometry.push_back(
+                                        &(m_list_batch_geometry[ent_id]));
+                        }
+                    }
+                    else
+                    {
+                        for(auto ent_id : batch_desc.list_ents)
+                        {
+                            list_geometry.push_back(
+                                        &(m_list_batch_geometry[ent_id]));
+                        }
                     }
 
                     // Merge
