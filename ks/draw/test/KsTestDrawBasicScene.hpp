@@ -77,8 +77,7 @@ namespace test
 
             m_batch_system =
                     make_unique<BatchSystem>(
-                        this,
-                        m_render_system->GetRenderDataComponentList());
+                        this);
         }
 
         void Init(ks::Object::Key const &,
