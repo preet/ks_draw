@@ -271,11 +271,12 @@ namespace ks
 
                 // Set the glyph atlas texture
                 uint const pixel_count = g_glyph_atlas_image_data.size();
-                Image<R8> glyph_atlas_image;
-                glyph_atlas_image.set(g_glyph_atlas_width,
-                                      g_glyph_atlas_height,{});
 
-                std::vector<R8> &list_pixels = glyph_atlas_image.data();
+                Image<R8> glyph_atlas_image(
+                            g_glyph_atlas_width,
+                            g_glyph_atlas_height);
+
+                auto &list_pixels = glyph_atlas_image.GetData();
                 list_pixels.reserve(pixel_count);
 
                 for(uint i=0; i < pixel_count ; i++) {
@@ -285,12 +286,9 @@ namespace ks
 
                 m_glyph_atlas->UpdateTexture(
                             gl::Texture2D::Update{
-                                true,
-                                false,
+                                gl::Texture2D::Update::ReUpload,
                                 glm::u16vec2{0,0},
-                                make_shared<ImageData const>(
-                                    std::move(glyph_atlas_image.
-                                        conv_to_image_data()))
+                                glyph_atlas_image.ConvertToImageDataPtr().release()
                             });
 
                 // Populate the glyph lookups
