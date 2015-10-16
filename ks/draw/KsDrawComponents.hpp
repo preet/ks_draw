@@ -24,6 +24,7 @@
 #include <ks/gl/KsGLVertexBuffer.hpp>
 #include <ks/gl/KsGLIndexBuffer.hpp>
 #include <ks/gl/KsGLUniform.hpp>
+#include <ks/gl/KsGLTexture2D.hpp>
 
 #include <ks/shared/KsGraph.hpp>
 
@@ -147,6 +148,20 @@ namespace ks
 
             std::vector<UPtrBuffer> m_list_vx_buffs;
             UPtrBuffer m_ix_buff;
+        };
+
+        // ============================================================= //
+        // ============================================================= //
+
+        struct TextureSet final
+        {
+            // <Texture,tex unit>
+            std::vector<std::pair<unique_ptr<gl::Texture2D>,uint>> list_texture_desc;
+        };
+
+        struct UniformSet final
+        {
+            ListUniformUPtrs list_uniforms;
         };
 
         // ============================================================= //

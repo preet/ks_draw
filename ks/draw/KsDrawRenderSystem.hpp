@@ -70,27 +70,56 @@ namespace ks
             template<typename DataT,typename IndexT=uint>
             struct RecycleIndexListSync
             {
+                using RecycleIndexListSyncCallback =
+                    std::function<void(DataT& data)>;
+
                 RecycleIndexList<u8> list_async;
                 std::vector<std::pair<IndexT,DataT>> list_add;
                 std::vector<IndexT> list_rem;
                 std::vector<DataT> list_sync;
                 bool sync_required;
 
+                RecycleIndexListSyncCallback on_remove;
+                RecycleIndexListSyncCallback on_add;
+
                 void Sync()
                 {
                     if(sync_required)
                     {
-                        for(auto rem_id : list_rem)
+                        if(on_remove)
                         {
-                            list_sync[rem_id] = DataT(); // TODO std::move?
-                            list_async.Remove(rem_id);
+                            for(auto rem_id : list_rem)
+                            {
+                                on_remove(list_sync[rem_id]);
+                                list_sync[rem_id] = DataT(); // TODO std::move?
+                                list_async.Remove(rem_id);
+                            }
+                        }
+                        else
+                        {
+                            for(auto rem_id : list_rem)
+                            {
+                                list_sync[rem_id] = DataT(); // TODO std::move?
+                                list_async.Remove(rem_id);
+                            }
                         }
 
                         list_sync.resize(list_async.GetList().size());
 
-                        for(auto id_data : list_add)
+                        if(on_add)
                         {
-                            list_sync[id_data.first] = std::move(id_data.second);
+                            for(auto id_data : list_add)
+                            {
+                                list_sync[id_data.first] = std::move(id_data.second);
+                                on_add(list_sync[id_data.first]);
+                            }
+                        }
+                        else
+                        {
+                            for(auto id_data : list_add)
+                            {
+                                list_sync[id_data.first] = std::move(id_data.second);
+                            }
                         }
 
                         list_rem.clear();
@@ -133,6 +162,30 @@ namespace ks
                 m_list_stencil_configs.list_async.Add(0);
                 m_list_stencil_configs.list_add.emplace_back(
                             0,state_set_cb_no_op);
+
+                m_list_texture_sets.list_async.Add(0);
+                m_list_texture_sets.list_add.emplace_back(
+                            0,make_shared<TextureSet>());
+
+                m_list_texture_sets.on_add =
+                        [](shared_ptr<TextureSet>& texture_set) {
+                            // Init all textures
+                            for(auto& desc : texture_set->list_texture_desc) {
+                                desc.first->GLInit();
+                            }
+                        };
+
+                m_list_texture_sets.on_remove =
+                        [](shared_ptr<TextureSet>& texture_set) {
+                            // Clean up all textures
+                            for(auto& desc : texture_set->list_texture_desc) {
+                                desc.first->GLCleanUp();
+                            }
+                        };
+
+                m_list_uniform_sets.list_async.Add(0);
+                m_list_uniform_sets.list_add.emplace_back(
+                            0,make_shared<UniformSet>());
 
                 // Set initial sync state
                 m_sync_draw_stages = false;
@@ -298,6 +351,46 @@ namespace ks
 
             // ============================================================= //
 
+            Id RegisterTextureSet(shared_ptr<TextureSet> texture_set)
+            {
+                auto new_id = m_list_texture_sets.list_async.Add(0);
+
+                m_list_texture_sets.list_add.emplace_back(
+                            new_id,std::move(texture_set));
+
+                m_list_texture_sets.sync_required = true;
+
+                return new_id;
+            }
+
+            void RemoveTextureSet(Id texture_set_id)
+            {
+                m_list_texture_sets.list_rem.push_back(texture_set_id);
+                m_list_texture_sets.sync_required = true;
+            }
+
+            // ============================================================= //
+
+            Id RegisterUniformSet(shared_ptr<UniformSet> uniform_set)
+            {
+                auto new_id = m_list_uniform_sets.list_async.Add(0);
+
+                m_list_uniform_sets.list_add.emplace_back(
+                            new_id,std::move(uniform_set));
+
+                m_list_uniform_sets.sync_required = true;
+
+                return new_id;
+            }
+
+            void RemoveUniformSet(Id uniform_set_id)
+            {
+                m_list_uniform_sets.list_rem.push_back(uniform_set_id);
+                m_list_uniform_sets.sync_required = true;
+            }
+
+            // ============================================================= //
+
             Id RegisterSyncCallback(std::function<void()> cb)
             {
                 return m_list_sync_cbs.Add(std::move(cb));
@@ -360,6 +453,8 @@ namespace ks
                 syncShaders();
                 syncBuffers(); // must be called after GeometryUpdateTask::Update()
                 syncRasterConfigs();
+                syncTextures();
+                syncUniforms();
 
                 m_draw_call_updater.Sync(m_list_draw_calls);
 
@@ -448,6 +543,8 @@ namespace ks
                 stage_params.list_depth_configs = &(m_list_depth_configs.list_sync);
                 stage_params.list_blend_configs = &(m_list_blend_configs.list_sync);
                 stage_params.list_stencil_configs = &(m_list_stencil_configs.list_sync);
+                stage_params.list_texture_sets = &(m_list_texture_sets.list_sync);
+                stage_params.list_uniform_sets = &(m_list_uniform_sets.list_sync);
                 stage_params.list_draw_calls = &m_list_draw_calls;
 
                 for(auto stage : m_list_draw_stage_idxs_sync)
@@ -560,6 +657,40 @@ namespace ks
                 m_list_stencil_configs.Sync();
             }
 
+            void syncTextures()
+            {
+                m_list_texture_sets.Sync();
+
+                for(auto& texture_set : m_list_texture_sets.list_sync)
+                {
+                    for(auto& desc : texture_set->list_texture_desc)
+                    {
+                        auto& texture = desc.first;
+                        auto tex_unit = desc.second;
+
+                        if(texture->GetUpdateCount() > 0)
+                        {
+                            texture->GLBind(m_state_set.get(),tex_unit);
+                            texture->GLSync();
+                            // TODO texture->GLUnbind() ?
+                        }
+                    }
+                }
+            }
+
+            void syncUniforms()
+            {
+                m_list_uniform_sets.Sync();
+
+                for(auto& uniform_set : m_list_uniform_sets.list_sync)
+                {
+                    for(auto& uniform : uniform_set->list_uniforms)
+                    {
+                        uniform->Sync();
+                    }
+                }
+            }
+
             void syncBuffers()
             {
                 // Init new buffers
@@ -648,6 +779,12 @@ namespace ks
             RecycleIndexListSync<StateSetCb> m_list_depth_configs;
             RecycleIndexListSync<StateSetCb> m_list_blend_configs;
             RecycleIndexListSync<StateSetCb> m_list_stencil_configs;
+
+            // == TextureSets == //
+            RecycleIndexListSync<shared_ptr<TextureSet>> m_list_texture_sets;
+
+            // == UniformSets == //
+            RecycleIndexListSync<shared_ptr<UniformSet>> m_list_uniform_sets;
 
             // == Sync Callbacks == //
             RecycleIndexList<std::function<void()>> m_list_sync_cbs;
