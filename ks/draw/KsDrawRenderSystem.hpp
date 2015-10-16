@@ -537,15 +537,18 @@ namespace ks
                 m_stats.ClearRenderStats();
                 auto timing_start = std::chrono::high_resolution_clock::now();
 
-                DrawParams<DrawKeyType> stage_params;
-                stage_params.state_set = m_state_set.get();
-                stage_params.list_shaders = &m_list_shaders_sync;
-                stage_params.list_depth_configs = &(m_list_depth_configs.list_sync);
-                stage_params.list_blend_configs = &(m_list_blend_configs.list_sync);
-                stage_params.list_stencil_configs = &(m_list_stencil_configs.list_sync);
-                stage_params.list_texture_sets = &(m_list_texture_sets.list_sync);
-                stage_params.list_uniform_sets = &(m_list_uniform_sets.list_sync);
-                stage_params.list_draw_calls = &m_list_draw_calls;
+                DrawParams<DrawKeyType> stage_params{
+                            m_state_set.get(),
+                            m_list_shaders_sync,
+                            m_list_depth_configs.list_sync,
+                            m_list_blend_configs.list_sync,
+                            m_list_stencil_configs.list_sync,
+                            m_list_texture_sets.list_sync,
+                            m_list_uniform_sets.list_sync,
+                            m_list_draw_calls,
+                            nullptr,
+                            nullptr
+                };
 
                 for(auto stage : m_list_draw_stage_idxs_sync)
                 {

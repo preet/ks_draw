@@ -36,8 +36,7 @@ namespace ks
                 // reset stats
                 this->m_stats.reset();
 
-                auto& list_shaders = *(p.list_shaders);
-                auto& list_draw_calls = *(p.list_draw_calls);
+                auto& list_draw_calls = p.list_draw_calls;
                 auto& list_opq_draw_calls = *(p.list_opq_draw_calls);
                 auto& list_xpr_draw_calls = *(p.list_xpr_draw_calls);
 
@@ -70,7 +69,7 @@ namespace ks
                     setupState(p,prev_key,draw_call.key);
 
                     gl::ShaderProgram* shader =
-                            list_shaders[draw_call.key.GetShader()].get();
+                            p.list_shaders[draw_call.key.GetShader()].get();
 
                     // Set the individual uniforms
                     if(draw_call.list_uniforms)
@@ -92,7 +91,7 @@ namespace ks
                     setupState(p,prev_key,draw_call.key);
 
                     gl::ShaderProgram* shader =
-                            list_shaders[draw_call.key.GetShader()].get();
+                            p.list_shaders[draw_call.key.GetShader()].get();
 
                     // Set the individual uniforms
                     if(draw_call.list_uniforms)
@@ -174,46 +173,39 @@ namespace ks
                 if(!(prev_key == curr_key))
                 {
                     auto const shader_id = curr_key.GetShader();
-                    if(prev_key.GetShader() != curr_key.GetShader())
+                    auto const depth_config_id = curr_key.GetDepthConfig();
+                    auto const blend_config_id = curr_key.GetBlendConfig();
+                    auto const stencil_config_id = curr_key.GetStencilConfig();
+                    auto const texture_set_id = curr_key.GetTextureSet();
+                    auto const uniform_set_id = curr_key.GetUniformSet();
+
+                    if(prev_key.GetShader() != shader_id)
                     {
-                        auto& list_shaders = *(p.list_shaders);
-
-                        gl::ShaderProgram* shader =
-                                list_shaders[shader_id].get();
-
-                        shader->GLEnable(p.state_set);
+                        p.list_shaders[shader_id]->GLEnable(p.state_set);
                         this->m_stats.shader_switches++;
                     }
 
-                    auto const depth_config = curr_key.GetDepthConfig();
-                    if((prev_key.GetDepthConfig() != depth_config) && (depth_config > 0))
+                    if((prev_key.GetDepthConfig() != depth_config_id) && (depth_config_id > 0))
                     {
-                        auto& list_depth_configs = *(p.list_depth_configs);
-                        list_depth_configs[depth_config](p.state_set);
+                        p.list_depth_configs[depth_config_id](p.state_set);
                         this->m_stats.raster_ops++;
                     }
 
-                    auto const blend_config = curr_key.GetBlendConfig();
-                    if((prev_key.GetBlendConfig() != blend_config) && (blend_config > 0))
+                    if((prev_key.GetBlendConfig() != blend_config_id) && (blend_config_id > 0))
                     {
-                        auto& list_blend_configs = *(p.list_blend_configs);
-                        list_blend_configs[blend_config](p.state_set);
+                        p.list_blend_configs[blend_config_id](p.state_set);
                         this->m_stats.raster_ops++;
                     }
 
-                    auto const stencil_config = curr_key.GetStencilConfig();
-                    if((prev_key.GetStencilConfig() != stencil_config) && (stencil_config > 0))
+                    if((prev_key.GetStencilConfig() != stencil_config_id) && (stencil_config_id > 0))
                     {
-                        auto& list_stencil_configs = *(p.list_stencil_configs);
-                        list_stencil_configs[stencil_config](p.state_set);
+                        p.list_stencil_configs[stencil_config_id](p.state_set);
                         this->m_stats.raster_ops++;
                     }
 
-                    auto const texture_set_id = curr_key.GetTextureSet();
                     if(prev_key.GetTextureSet() != texture_set_id)
                     {
-                        auto& list_texture_sets = *(p.list_texture_sets);
-                        auto& texture_set = list_texture_sets[texture_set_id];
+                        auto& texture_set = p.list_texture_sets[texture_set_id];
 
                         for(auto& desc : texture_set->list_texture_desc)
                         {
@@ -225,14 +217,10 @@ namespace ks
                         }
                     }
 
-                    auto const uniform_set_id = curr_key.GetUniformSet();
                     if(prev_key.GetUniformSet() != uniform_set_id)
                     {
-                        auto& list_uniform_sets = *(p.list_uniform_sets);
-                        auto& uniform_set = list_uniform_sets[uniform_set_id];
-
-                        auto& list_shaders = *(p.list_shaders);
-                        auto& shader = list_shaders[shader_id];
+                        auto& uniform_set = p.list_uniform_sets[uniform_set_id];
+                        auto& shader = p.list_shaders[shader_id];
 
                         for(auto& uniform : uniform_set->list_uniforms)
                         {

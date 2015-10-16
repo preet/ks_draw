@@ -53,13 +53,14 @@ namespace ks
         struct DrawParams
         {
             gl::StateSet* state_set;
-            std::vector<shared_ptr<gl::ShaderProgram>>* list_shaders;
-            std::vector<StateSetCb>* list_depth_configs;
-            std::vector<StateSetCb>* list_blend_configs;
-            std::vector<StateSetCb>* list_stencil_configs;
-            std::vector<shared_ptr<TextureSet>>* list_texture_sets;
-            std::vector<shared_ptr<UniformSet>>* list_uniform_sets;
-            std::vector<DrawCall<DrawKeyType>>* list_draw_calls;
+            std::vector<shared_ptr<gl::ShaderProgram>>& list_shaders;
+            std::vector<StateSetCb>& list_depth_configs;
+            std::vector<StateSetCb>& list_blend_configs;
+            std::vector<StateSetCb>& list_stencil_configs;
+            std::vector<shared_ptr<TextureSet>>& list_texture_sets;
+            std::vector<shared_ptr<UniformSet>>& list_uniform_sets;
+            std::vector<DrawCall<DrawKeyType>>& list_draw_calls;
+
             std::vector<Id>* list_opq_draw_calls;
             std::vector<Id>* list_xpr_draw_calls;
         };
