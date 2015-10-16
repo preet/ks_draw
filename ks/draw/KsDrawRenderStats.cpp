@@ -52,8 +52,8 @@ namespace ks
 
             text_render_data += "shader/rop/tex/calls: " +
                     ks::to_string(shader_switches) + "/" +
-                    ks::to_string(texture_switches) + "/" +
                     ks::to_string(raster_ops)+ "/" +
+                    ks::to_string(texture_switches) + "/" +
                     ks::to_string(draw_calls)+
                     "\n";
 
