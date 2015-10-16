@@ -47,20 +47,27 @@ namespace ks
 
         void RenderStats::GenRenderText()
         {
-            render_text.clear();
+            text_render_data.clear();
+            text_render_times.clear();
 
-            render_text += "render: " + ks::to_string_format(render_ms,3,7,'0') + "ms\n";
-            render_text += "shader switches: " + ks::to_string(shader_switches) + "\n";
-            render_text += "draw calls: " + ks::to_string(draw_calls) + "\n";
+            text_render_data += "shader/rop/tex/calls: " +
+                    ks::to_string(shader_switches) + "/" +
+                    ks::to_string(texture_switches) + "/" +
+                    ks::to_string(raster_ops)+ "/" +
+                    ks::to_string(draw_calls)+
+                    "\n";
+
+            text_render_times += "render: " + ks::to_string_format(render_ms,3,7,'0') + "ms\n";
         }
 
         void RenderStats::GenUpdateText()
         {
-            update_text.clear();
+            text_update_data.clear();
+            text_update_times.clear();
 
-            update_text += "update: " + ks::to_string_format(update_ms,3,7,'0') + "ms\n";
-            update_text += "sync: " + ks::to_string_format(sync_ms,3,7,'0') + "ms\n";
-            update_text += "buffer count/mem: " + ks::to_string(buffer_count) +
+            text_update_times += "update: " + ks::to_string_format(update_ms,3,7,'0') + "ms\n";
+            text_update_times += "sync: " + ks::to_string_format(sync_ms,3,7,'0') + "ms\n";
+            text_update_data += "buffer count/mem: " + ks::to_string(buffer_count) +
                            "/" + ks::to_string(buffer_mem_bytes) + " bytes";
         }
     }

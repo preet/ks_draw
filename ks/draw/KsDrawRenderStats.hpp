@@ -48,8 +48,10 @@ namespace ks
             uint texture_count;
             uint texture_mem_bytes;
 
-            std::string render_text;
-            std::string update_text;
+            std::string text_render_times;
+            std::string text_update_times;
+            std::string text_render_data;
+            std::string text_update_data;
         };
     }
 }

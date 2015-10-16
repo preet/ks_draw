@@ -579,8 +579,10 @@ namespace ks
 
                 glm::vec4 const text_color{1,1,1,1};
                 std::string render_debug_text =
-                        m_stats.render_text+
-                        m_stats.update_text;
+                        m_stats.text_update_times+
+                        m_stats.text_render_times+
+                        m_stats.text_render_data+
+                        m_stats.text_update_data;
 
                 m_debug_text_draw_stage->SetText(
                             glm::vec2{-1,-0.5},
