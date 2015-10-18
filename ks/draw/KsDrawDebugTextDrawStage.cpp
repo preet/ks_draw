@@ -261,11 +261,13 @@ namespace ks
 
                 m_glyph_atlas =
                         make_unique<gl::Texture2D>(
-                            g_glyph_atlas_width,
-                            g_glyph_atlas_height,
-                            gl::Texture2D::Format::LUMINANCE8,
+                            gl::Texture2D::Format::LUMINANCE8);
+
+                m_glyph_atlas->SetFilterModes(
                             gl::Texture::Filter::Linear,
-                            gl::Texture::Filter::Linear,
+                            gl::Texture::Filter::Linear);
+
+                m_glyph_atlas->SetWrapModes(
                             gl::Texture::Wrap::ClampToEdge,
                             gl::Texture::Wrap::ClampToEdge);
 

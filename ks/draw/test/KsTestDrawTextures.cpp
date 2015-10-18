@@ -174,10 +174,13 @@ namespace test
 
                 unique_ptr<gl::Texture2D> texture =
                         make_unique<gl::Texture2D>(
-                            16,16,
-                            gl::Texture2D::Format::RGBA8,
+                            gl::Texture2D::Format::RGBA8);
+
+                texture->SetFilterModes(
                             gl::Texture::Filter::Nearest,
-                            gl::Texture::Filter::Nearest,
+                            gl::Texture::Filter::Nearest);
+
+                texture->SetWrapModes(
                             gl::Texture::Wrap::ClampToEdge,
                             gl::Texture::Wrap::ClampToEdge);
 
