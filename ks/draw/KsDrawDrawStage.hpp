@@ -98,6 +98,10 @@ namespace ks
                 return m_stats;
             }
 
+            // Called by an unspecified thread with all rendering
+            // disabled (Render will not called while Reset is called)
+            virtual void Reset() = 0;
+
             // Called by the render thread
             virtual void Render(DrawParams<DrawKeyType>& params) = 0;
 

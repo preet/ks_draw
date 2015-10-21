@@ -127,13 +127,23 @@ namespace ks
                         sync_required = false;
                     }
                 }
+
+                // Clear all data without calling any SyncCallbacks
+                // (so no on_remove callbacks are invoked)
+                void Clear()
+                {
+                    list_async.Clear();
+                    list_add.clear();
+                    list_rem.clear();
+                    list_sync.clear();
+                    sync_required = false;
+                }
             };
 
         public:
             RenderSystem(ecs::Scene<SceneKeyType>* scene) :
                 m_scene(scene),
                 m_state_set(make_unique<gl::StateSet>()),
-                m_init(false),
                 m_waiting_on_sync(false)
             {
                 // Create the RenderData component list
@@ -144,13 +154,7 @@ namespace ks
                         static_cast<RenderDataComponentList*>(
                             m_scene->template GetComponentList<RenderData>());
 
-
-                // Reserve index 0 for resource lists and counters
-                m_graph_draw_stages_async.AddNode(nullptr);
-
-                m_list_shaders.list_async.Add(0);
-                m_list_shaders.list_add.emplace_back(0,nullptr);
-
+                // Create the sync callbacks for resource lists
                 m_list_shaders.on_add =
                         [](shared_ptr<gl::ShaderProgram>& shader) {
                             if(shader) {
@@ -164,24 +168,6 @@ namespace ks
                                 shader->GLCleanUp();
                             }
                         };
-
-                StateSetCb state_set_cb_no_op = [](gl::StateSet*){};
-
-                m_list_depth_configs.list_async.Add(0);
-                m_list_depth_configs.list_add.emplace_back(
-                            0,state_set_cb_no_op);
-
-                m_list_blend_configs.list_async.Add(0);
-                m_list_blend_configs.list_add.emplace_back(
-                            0,state_set_cb_no_op);
-
-                m_list_stencil_configs.list_async.Add(0);
-                m_list_stencil_configs.list_add.emplace_back(
-                            0,state_set_cb_no_op);
-
-                m_list_texture_sets.list_async.Add(0);
-                m_list_texture_sets.list_add.emplace_back(
-                            0,make_shared<TextureSet>());
 
                 m_list_texture_sets.on_add =
                         [](shared_ptr<TextureSet>& texture_set) {
@@ -199,17 +185,15 @@ namespace ks
                             }
                         };
 
-                m_list_uniform_sets.list_async.Add(0);
-                m_list_uniform_sets.list_add.emplace_back(
-                            0,make_shared<UniformSet>());
+                // Setup DrawStages
+                m_graph_draw_stages_async.AddNode(nullptr);
+                m_debug_text_draw_stage = make_unique<DebugTextDrawStage>();
 
-                // Set initial sync state
+                // (the debug text draw stage is not part of
+                //  the draw stage node graph)
                 m_sync_draw_stages = false;
 
-
-                // Create the debug text draw stage
-                m_debug_text_draw_stage =
-                        make_unique<DebugTextDrawStage>();
+                Reset();
             }
 
             ~RenderSystem() = default;
@@ -406,6 +390,65 @@ namespace ks
             void Reset()
             {
                 //
+                m_init = false;
+
+                // Clear resource lists
+                m_list_shaders.Clear();
+                m_list_depth_configs.Clear();
+                m_list_blend_configs.Clear();
+                m_list_stencil_configs.Clear();
+                m_list_texture_sets.Clear();
+                m_list_uniform_sets.Clear();
+
+                // Reserve index 0 for resource lists
+                m_list_shaders.list_async.Add(0);
+                m_list_shaders.list_add.emplace_back(0,nullptr);
+
+                StateSetCb state_set_cb_no_op = [](gl::StateSet*){};
+
+                m_list_depth_configs.list_async.Add(0);
+                m_list_depth_configs.list_add.emplace_back(
+                            0,state_set_cb_no_op);
+
+                m_list_blend_configs.list_async.Add(0);
+                m_list_blend_configs.list_add.emplace_back(
+                            0,state_set_cb_no_op);
+
+                m_list_stencil_configs.list_async.Add(0);
+                m_list_stencil_configs.list_add.emplace_back(
+                            0,state_set_cb_no_op);
+
+                m_list_texture_sets.list_async.Add(0);
+                m_list_texture_sets.list_add.emplace_back(
+                            0,make_shared<TextureSet>());
+
+                m_list_uniform_sets.list_async.Add(0);
+                m_list_uniform_sets.list_add.emplace_back(
+                            0,make_shared<UniformSet>());
+
+                // Reset DrawStage nodes
+                auto& list_draw_stages =
+                        m_graph_draw_stages_async.
+                            GetSparseNodeList();
+
+                for(uint i=0; i < list_draw_stages.size(); i++)
+                {
+                    if(list_draw_stages[i].valid && list_draw_stages[i].value)
+                    {
+                        auto& draw_stage = list_draw_stages[i].value;
+                        draw_stage->Reset();
+                    }
+                }
+
+                // Reset the debug text draw stage
+                m_debug_text_draw_stage->Reset();
+
+                //
+                m_draw_call_updater.Reset();
+                m_list_buffers.clear();
+                m_list_draw_calls.clear();
+                m_list_opq_draw_calls_by_stage.clear();
+                m_list_xpr_draw_calls_by_stage.clear();
             }
 
             // ============================================================= //

@@ -31,7 +31,12 @@ namespace ks
             DefaultDrawStage() = default;
             ~DefaultDrawStage() = default;
 
-            void Render(DrawParams<DrawKeyType>& p)
+            void Reset() override
+            {
+                // do nothing
+            }
+
+            void Render(DrawParams<DrawKeyType>& p) override
             {
                 // reset stats
                 this->m_stats.reset();

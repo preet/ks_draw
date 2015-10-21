@@ -246,9 +246,15 @@ namespace ks
             }
 
 
-            Impl::Impl() :
-                m_init(false)
+            Impl::Impl()
             {
+                Reset();
+            }
+
+            void Impl::Reset()
+            {
+                m_init = false;
+
                 m_shader =
                         make_unique<gl::ShaderProgram>(
                             vertex_shader,
@@ -306,8 +312,8 @@ namespace ks
                 float const pixel_width = 1.0/g_glyph_atlas_width;
                 float const pixel_height = 1.0/g_glyph_atlas_height;
 
+                m_list_glyph_texcoords.clear();
                 m_list_glyph_texcoords.reserve((glyph_rows*glyph_cols)+1);
-
 
                 // Add a set of texcoords for space ' '
                 m_list_glyph_texcoords.push_back(
@@ -335,7 +341,7 @@ namespace ks
             void Impl::Render(gl::StateSet* state_set)
             {
                 if(!m_init) {
-                    this->init(state_set);
+                    this->initialize(state_set);
                 }
 
                 // uniforms
@@ -515,7 +521,7 @@ namespace ks
                 m_list_strings = list_strings;
             }
 
-            void Impl::init(gl::StateSet* state_set)
+            void Impl::initialize(gl::StateSet* state_set)
             {
                 bool ok = m_shader->GLInit();
                 assert(ok);
@@ -526,6 +532,7 @@ namespace ks
 
                 m_init = true;
             }
+
         }
     }
 }

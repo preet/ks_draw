@@ -42,10 +42,11 @@ namespace ks
                              glm::vec4 text_color,
                              std::string text);
 
+                void Reset();
                 void Render(gl::StateSet* state_set);
 
             private:
-                void init(gl::StateSet* state_set);
+                void initialize(gl::StateSet* state_set);
 
                 bool m_init;
                 unique_ptr<gl::ShaderProgram> m_shader;
@@ -85,7 +86,12 @@ namespace ks
                                 text);
             }
 
-            void Render(DrawParams<DrawKeyType>& p)
+            void Reset() override
+            {
+                m_impl->Reset();
+            }
+
+            void Render(DrawParams<DrawKeyType>& p) override
             {
                 m_impl->Render(p.state_set);
             }

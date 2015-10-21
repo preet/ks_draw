@@ -144,27 +144,6 @@ namespace ks
                 }
             }
 
-            bool checkUpdatedGeometry(Geometry& geometry)
-            {
-                for(auto vx_buff_idx : geometry.GetUpdatedVertexBuffers())
-                {
-                    if(geometry.GetVertexBuffer(vx_buff_idx)->empty())
-                    {
-                        return false;
-                    }
-                }
-
-                if(geometry.GetUpdatedIndexBuffer())
-                {
-                    if(geometry.GetIndexBuffer()->empty())
-                    {
-                        return false;
-                    }
-                }
-
-                return true;
-            }
-
             void Sync(std::vector<DrawCall>& list_draw_calls)
             {
                 // Resize draw_calls if necessary
@@ -216,6 +195,20 @@ namespace ks
                     }
                     draw_call.valid = true;
                 }
+            }
+
+            void Reset()
+            {
+                m_entity_count = 0;
+                m_list_ents_rem.clear();
+                m_list_ents_add.clear();
+                m_list_ents_upd.clear();
+                m_list_ent_rd_curr.clear();
+                m_list_ent_rd_prev.clear();
+                m_list_geometry_ranges.clear();
+                m_list_buffers_to_init.clear();
+                m_list_buffers_to_sync.clear();
+                m_list_new_buffers.clear();
             }
 
             std::set<gl::Buffer*>& GetBuffersToInit()
@@ -310,6 +303,27 @@ namespace ks
                 for(auto& ent_rd : list_ents_rd_add) {
                     list_ents_add.push_back(ent_rd.first);
                 }
+            }
+
+            bool checkUpdatedGeometry(Geometry& geometry)
+            {
+                for(auto vx_buff_idx : geometry.GetUpdatedVertexBuffers())
+                {
+                    if(geometry.GetVertexBuffer(vx_buff_idx)->empty())
+                    {
+                        return false;
+                    }
+                }
+
+                if(geometry.GetUpdatedIndexBuffer())
+                {
+                    if(geometry.GetIndexBuffer()->empty())
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
             }
 
             void removeGeometryRanges(GeometryRanges& geometry)
