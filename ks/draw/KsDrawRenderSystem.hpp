@@ -147,7 +147,23 @@ namespace ks
 
                 // Reserve index 0 for resource lists and counters
                 m_graph_draw_stages_async.AddNode(nullptr);
-                m_list_shaders_async.Add(nullptr);
+
+                m_list_shaders.list_async.Add(0);
+                m_list_shaders.list_add.emplace_back(0,nullptr);
+
+                m_list_shaders.on_add =
+                        [](shared_ptr<gl::ShaderProgram>& shader) {
+                            if(shader) {
+                                shader->GLInit();
+                            }
+                        };
+
+                m_list_shaders.on_remove =
+                        [](shared_ptr<gl::ShaderProgram>& shader) {
+                            if(shader) {
+                                shader->GLCleanUp();
+                            }
+                        };
 
                 StateSetCb state_set_cb_no_op = [](gl::StateSet*){};
 
@@ -189,7 +205,6 @@ namespace ks
 
                 // Set initial sync state
                 m_sync_draw_stages = false;
-                m_sync_shaders = false;
 
 
                 // Create the debug text draw stage
@@ -251,42 +266,27 @@ namespace ks
                               std::string shader_source_vsh,
                               std::string shader_source_fsh)
             {
-                if(m_list_shaders_async.GetCount() == k_max_shaders)
-                {
-                    throw MaxShadersReached(
-                                m_log_prefix+
-                                "Max Shader limit reached ("+
-                                ks::to_string(k_max_shaders)+")");
-                }
+                auto shader =
+                        make_shared<gl::ShaderProgram>(
+                            shader_source_vsh,
+                            shader_source_fsh);
 
-                // Add to async list
-                uint const index =
-                        m_list_shaders_async.Add(
-                            make_shared<gl::ShaderProgram>(
-                                shader_source_vsh,
-                                shader_source_fsh));
+                shader->SetDesc(std::move(shader_desc));
 
-                m_list_shaders_async.Get(index)->SetDesc(
-                            std::move(shader_desc));
+                auto const new_id = m_list_shaders.list_async.Add(0);
 
-                // Add to list of shaders to call GLInit on
-                m_list_shaders_init.push_back(
-                            m_list_shaders_async.Get(index).get());
+                m_list_shaders.list_add.emplace_back(
+                            new_id,std::move(shader));
 
-                m_sync_shaders = true;
-                return index;
+                m_list_shaders.sync_required = true;
+
+                return new_id;
             }
 
-            void RemoveShader(Id index)
+            void RemoveShader(Id shader_id)
             {
-                // Add to list of shaders to call GLCleanUp on
-                m_list_shaders_cleanup.push_back(
-                            m_list_shaders_async.Get(index).get());
-
-                // Remove from async list
-                m_list_shaders_async.Remove(index);
-
-                m_sync_shaders = true;
+                m_list_shaders.list_rem.push_back(shader_id);
+                m_list_shaders.sync_required = true;
             }
 
             // ============================================================= //
@@ -399,6 +399,13 @@ namespace ks
             void RemoveSyncCallback(Id cb_id)
             {
                 m_list_sync_cbs.Remove(cb_id);
+            }
+
+            // ============================================================= //
+
+            void Reset()
+            {
+                //
             }
 
             // ============================================================= //
@@ -539,7 +546,7 @@ namespace ks
 
                 DrawParams<DrawKeyType> stage_params{
                             m_state_set.get(),
-                            m_list_shaders_sync,
+                            m_list_shaders.list_sync,
                             m_list_depth_configs.list_sync,
                             m_list_blend_configs.list_sync,
                             m_list_stencil_configs.list_sync,
@@ -636,23 +643,7 @@ namespace ks
 
             void syncShaders()
             {
-                // Shaders
-                if(m_sync_shaders)
-                {
-                    for(auto &shader : m_list_shaders_cleanup) {
-                        shader->GLCleanUp();
-                    }
-
-                    for(auto &shader : m_list_shaders_init) {
-                        shader->GLInit();
-                    }
-                    m_list_shaders_cleanup.clear();
-                    m_list_shaders_init.clear();
-
-                    // sync
-                    m_list_shaders_sync = m_list_shaders_async.GetList();
-                    m_sync_shaders = false;
-                }
+                m_list_shaders.Sync();
             }
 
             void syncRasterConfigs()
@@ -774,11 +765,7 @@ namespace ks
             unique_ptr<DebugTextDrawStage> m_debug_text_draw_stage;
 
             // == Shaders == //
-            bool m_sync_shaders;
-            std::vector<shared_ptr<gl::ShaderProgram>> m_list_shaders_sync;
-            RecycleIndexList<shared_ptr<gl::ShaderProgram>> m_list_shaders_async;
-            std::vector<gl::ShaderProgram*> m_list_shaders_init;
-            std::vector<gl::ShaderProgram*> m_list_shaders_cleanup;
+            RecycleIndexListSync<shared_ptr<gl::ShaderProgram>> m_list_shaders;
 
             // == Raster Op Configs == //
             RecycleIndexListSync<StateSetCb> m_list_depth_configs;
