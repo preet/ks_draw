@@ -183,8 +183,6 @@ namespace test
             draw::DefaultDrawKey draw_key;
             draw_key.SetShader(m_shader_id);
             draw_key.SetPrimitive(gl::Primitive::Triangles);
-            draw_key.SetBatchGroup(0);
-            draw_key.SetUpdatePriority(draw::DefaultDrawKey::UpdatePriority::SingleFrame);
 
             std::vector<u8> list_draw_stages = {u8(m_draw_stage_id)};
 

@@ -191,19 +191,10 @@ namespace test
 
                 m_batch_mf_id = batch_system->RegisterBatch(batch_mf);
 
-
-//                createTriangle();
-
                 m_setup = true;
             }
 
-            // Remove prev entities (HEY! NOT OK!)
-            // but why would this lead to crash? Because
-            // you have to remove batches before the
-            // entities that make them up
-            // ok but can we do a check in any way to
-            // see if batchdata components are mapped
-            // to an invalid entity id?
+            // Remove prev entities
             for(Id ent_id : m_list_triangle_ents) {
                 m_scene->RemoveEntity(ent_id);
             }
@@ -297,6 +288,8 @@ namespace test
 
             batch_data.GetGeometry().
                     SetVertexBufferUpdated(0);
+
+            batch_data.SetRebuild(true);
         }
 
         shared_ptr<Scene> m_scene;
