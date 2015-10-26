@@ -105,6 +105,17 @@ namespace test
             return m_batch_system.get();
         }
 
+        void OnPause()
+        {
+            m_update_timer->Stop();
+        }
+
+        void OnResume()
+        {
+            m_update_timer->Start();
+        }
+
+
         Signal<> signal_before_update;
 
     private:
@@ -157,8 +168,6 @@ namespace test
 
         void onUpdate()
         {
-//            LOG.Trace() << "U";
-
             signal_before_update.Emit();
 
             draw::time_point a;
@@ -183,26 +192,13 @@ namespace test
 
         void onSync()
         {
-//            LOG.Trace() << "S";
             m_render_system->Sync();
         }
 
         void onRender()
         {
-//            LOG.Trace() << "R";
             m_render_system->Render();
         }
-
-        void onWindowCreated()
-        {
-            auto window = m_window.lock();
-            window->SyncLayer(m_win_layer);
-
-            m_update_timer->Start();
-        }
-
-        void onWindowResized(uint, uint)
-        {}
 
 
         weak_ptr<gui::Window> m_window;
