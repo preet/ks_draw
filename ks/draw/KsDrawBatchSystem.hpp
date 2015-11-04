@@ -54,6 +54,7 @@ namespace ks
             public:
                 struct BatchDesc
                 {
+                    Id uid;
                     Id batch_id;
                     Id merged_ent;
                     std::vector<Id> list_ents;
@@ -92,6 +93,7 @@ namespace ks
             {
                 shared_ptr<Batch<DrawKeyType>> batch;
 
+                Id uid{0};
                 Id merged_ent{0};
                 Geometry* merged_gm{nullptr};
                 bool rebuild{false};
@@ -116,6 +118,7 @@ namespace ks
                 m_cmlist_render_data(
                     static_cast<RenderDataComponentList*>(
                         scene->template GetComponentList<RenderData>())),
+                m_batch_group_uid_counter(1),
                 m_thread_pool(1)
             {
                 // Create the BatchData component list
@@ -207,6 +210,7 @@ namespace ks
                 }
 
                 batch_group->batch = batch;
+                batch_group->uid = m_batch_group_uid_counter++;
                 batch_group->merged_ent = merged_ent_id;
                 batch_group->merged_gm = &geometry;
 
@@ -522,7 +526,8 @@ namespace ks
                     // Ensure the batch group is still valid
                     auto const batch_id = batch_desc.batch_id;
                     if(batch_id < m_list_batch_groups.GetList().size() &&
-                       m_list_batch_groups[batch_id])
+                       m_list_batch_groups[batch_id] &&
+                       m_list_batch_groups[batch_id]->uid == batch_desc.uid)
                     {
                         auto const merged_ent = batch_desc.merged_ent;
 
@@ -550,6 +555,7 @@ namespace ks
                     {
                         list_batch_desc->push_back(
                                     detail::BatchTask::BatchDesc{
+                                        batch_group->uid,
                                         group,
                                         batch_group->merged_ent,
                                         batch_group->list_ents_curr,
@@ -587,6 +593,8 @@ namespace ks
             BatchPreMergeCallback m_pre_merge_callback_sf;
             BatchPreMergeCallback m_pre_merge_callback_mf;
             BatchPreTaskCallback m_pre_task_callback;
+
+            Id m_batch_group_uid_counter;
 
             // The thread pool must be destroyed before any resources
             // used by it or the task (like list_batch_geometry) so keep

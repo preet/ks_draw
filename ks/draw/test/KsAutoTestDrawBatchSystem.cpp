@@ -278,6 +278,67 @@ TEST_CASE("ks::draw::BatchSystem")
     auto const batch1_id = batch_system->RegisterBatch(batch1);
     auto const batch1_ent = batch_system->GetBatchEntity(batch1_id);
 
+    SECTION("[MultiFrame] unintentionally reused Batch groups")
+    {
+        // If a MultiFrame batch has its BatchGroup deleted and
+        // then recreated before the batch returns, the merged gm
+        // will be tied to the 'wrong' group
+
+        ks::shared_ptr<ks::draw::Batch<ks::draw::DefaultDrawKey>> batch_a =
+                ks::make_shared<ks::draw::Batch<ks::draw::DefaultDrawKey>>(
+                    ks::draw::DefaultDrawKey{},
+                    &buffer_layout,
+                    nullptr,
+                    std::vector<ks::u8>{},
+                    ks::draw::Transparency::Opaque,
+                    ks::draw::UpdatePriority::MultiFrame);
+
+        auto const batch_a_id = batch_system->RegisterBatch(batch_a);
+        auto const batch_a_ent = batch_system->GetBatchEntity(batch_a_id);
+
+        // Add a couple of entities
+        auto const ent1 = scene->CreateEntity();
+        auto batch_data1 = CreateBatchData(scene.get(),ent1,batch_a_id);
+        auto geometry_data1 = FillGeometry(batch_data1,2);
+        batch_data1->SetRebuild(true);
+
+        auto const ent2 = scene->CreateEntity();
+        auto batch_data2 = CreateBatchData(scene.get(),ent2,batch_a_id);
+        auto geometry_data2 = FillGeometry(batch_data2,5);
+        batch_data2->SetRebuild(true);
+
+        batch_system->Update(tp0,tp1);
+
+        // Remove and add another batch group
+        scene->RemoveEntity(ent1);
+        scene->RemoveEntity(ent2);
+        batch_system->RemoveBatch(batch_a_id);
+
+        ks::shared_ptr<ks::draw::Batch<ks::draw::DefaultDrawKey>> batch_b =
+                ks::make_shared<ks::draw::Batch<ks::draw::DefaultDrawKey>>(
+                    ks::draw::DefaultDrawKey{},
+                    &buffer_layout,
+                    nullptr,
+                    std::vector<ks::u8>{},
+                    ks::draw::Transparency::Opaque,
+                    ks::draw::UpdatePriority::MultiFrame);
+
+        auto const batch_b_id = batch_system->RegisterBatch(batch_b);
+        auto const batch_b_ent = batch_system->GetBatchEntity(batch_b_id);
+
+        REQUIRE(batch_a_id == batch_b_id);
+
+        batch_system->WaitOnMultiFrameBatch();
+
+        // The MultiFrame groups have a single update delay
+        batch_system->Update(tp0,tp1);
+
+        // If the new batch's merged entity has a non-empty
+        // RenderData, the wrong data was assigned. It must be empty.
+        auto& merged_gm_b = list_render_data[batch_b_ent].GetGeometry();
+        REQUIRE(merged_gm_b.GetVertexBuffer(0)->empty());
+    }
+
     SECTION("Add/Remove/Update Entities [SingleFrame]")
     {
         auto& geometry_batch0 = list_render_data[batch0_ent].GetGeometry();
