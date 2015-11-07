@@ -172,6 +172,9 @@ namespace test
             batch_system->RemoveBatch(m_batch_sf_id);
             batch_system->RemoveBatch(m_batch_mf_id);
 
+            // Clear vertex buffers
+            vx_buff_allocator->ClearAllRanges();
+
             // Reset the updater
             m_setup = false;
         }
