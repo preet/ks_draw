@@ -188,6 +188,15 @@ namespace test
 
             window->GetEventLoop()->PostTask(sync_task);
             sync_task->Wait();
+
+            // Render
+            auto render_task =
+                    make_shared<ks::Task>(
+                        [window_ptr](){
+                            window_ptr->Render();
+                        });
+
+            window->GetEventLoop()->PostTask(render_task);
         }
 
         void onSync()
@@ -199,7 +208,6 @@ namespace test
         {
             m_render_system->Render();
         }
-
 
         weak_ptr<gui::Window> m_window;
         shared_ptr<gui::Layer> m_win_layer;

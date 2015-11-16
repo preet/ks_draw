@@ -159,7 +159,9 @@ namespace test
             }
 
             m_angle_rads += (3.14/180.0);
-            m_xf = glm::rotate(m_angle_rads,glm::vec3(0,0,1));
+            m_xf = glm::translate(glm::vec3(sin(m_angle_rads),0,0));//*
+//                   glm::rotate(m_angle_rads,glm::vec3(0,0,1));
+
 
             auto u_m4_model_base_ptr =
                     m_render_data->GetUniformList()->at(0).get();
@@ -276,7 +278,6 @@ int main(int argc, char* argv[])
     std::thread scene_thread =
             EventLoop::LaunchInThread(scene_evl);
 
-
     // Create window
     gui::Window::Attributes win_attribs;
     gui::Window::Properties win_props;
@@ -291,7 +292,7 @@ int main(int argc, char* argv[])
             make_object<test::Scene>(
                 scene_evl,
                 window,
-                std::chrono::milliseconds(17));
+                std::chrono::milliseconds(15));
 
     shared_ptr<test::Updater> test_updater =
             make_object<test::Updater>(

@@ -365,13 +365,6 @@ int main(int argc, char* argv[])
     std::thread scene_thread =
             EventLoop::LaunchInThread(scene_evl);
 
-    //    shared_ptr<EventLoop> const &render_evl =
-    //            app->GetEventLoop();
-
-    //    shared_ptr<EventLoop> const &scene_evl =
-    //            app->GetEventLoop();
-
-
     // Create window
     gui::Window::Attributes win_attribs;
     gui::Window::Properties win_props;
