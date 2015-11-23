@@ -67,9 +67,6 @@ namespace test
             m_window(window),
             m_update_dt_ms(update_dt_ms)
         {
-            // Create a window layer
-            m_win_layer = window->CreateLayer(0);
-
             // Create Systems
             m_render_system =
                     make_unique<RenderSystem>(
@@ -137,25 +134,14 @@ namespace test
                         [=](){ scene_ptr->onUpdate(); });
 
 
-            // Window Layer ---> Scene
-            m_win_layer->signal_render.Connect(
-                        this_scene,
-                        &Scene::onRender,
-                        ks::ConnectionType::Direct);
-
-            m_win_layer->signal_sync.Connect(
-                        this_scene,
-                        &Scene::onSync,
-                        ks::ConnectionType::Direct);
-
-
             // Do the first Sync (is this necessary?)
+            auto sync_callback = std::bind(&Scene::onSync,this);
             shared_ptr<gui::Window> window = m_window.lock();
             gui::Window* window_ptr = window.get();
             auto sync_task =
                     make_shared<ks::Task>(
-                        [window_ptr,this](){
-                            window_ptr->SyncLayer(m_win_layer);
+                        [window_ptr,sync_callback](){
+                            window_ptr->InvokeWithContext(sync_callback);
                         });
 
             window->GetEventLoop()->PostTask(sync_task);
@@ -180,20 +166,23 @@ namespace test
             auto window = m_window.lock();
             gui::Window* window_ptr = window.get();
 
+            auto sync_callback = std::bind(&Scene::onSync,this);
             auto sync_task =
                     make_shared<ks::Task>(
-                        [window_ptr,this](){
-                            window_ptr->SyncLayer(m_win_layer);
+                        [window_ptr,sync_callback](){
+                            window_ptr->InvokeWithContext(sync_callback);
                         });
 
             window->GetEventLoop()->PostTask(sync_task);
             sync_task->Wait();
 
             // Render
+            auto render_callback = std::bind(&Scene::onRender,this);
             auto render_task =
                     make_shared<ks::Task>(
-                        [window_ptr](){
-                            window_ptr->Render();
+                        [window_ptr,render_callback](){
+                            window_ptr->InvokeWithContext(render_callback);
+                            window_ptr->SwapBuffers();
                         });
 
             window->GetEventLoop()->PostTask(render_task);
@@ -210,7 +199,6 @@ namespace test
         }
 
         weak_ptr<gui::Window> m_window;
-        shared_ptr<gui::Layer> m_win_layer;
         std::chrono::milliseconds m_update_dt_ms;
         shared_ptr<CallbackTimer> m_update_timer;
         unique_ptr<RenderSystem> m_render_system;

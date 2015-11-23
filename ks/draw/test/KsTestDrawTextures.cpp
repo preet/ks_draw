@@ -188,7 +188,8 @@ namespace test
                             gl::Texture2D::Update{
                                 gl::Texture2D::Update::ReUpload,
                                 glm::u16vec2(0,0),
-                                image.ConvertToImageDataPtr().release()
+                                shared_ptr<ImageData>(
+                                    image.ConvertToImageDataPtr().release())
                             });
 
                 // Add the texture

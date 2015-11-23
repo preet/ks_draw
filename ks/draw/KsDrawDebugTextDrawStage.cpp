@@ -296,7 +296,8 @@ namespace ks
                             gl::Texture2D::Update{
                                 gl::Texture2D::Update::ReUpload,
                                 glm::u16vec2{0,0},
-                                glyph_atlas_image.ConvertToImageDataPtr().release()
+                                shared_ptr<ImageData>(
+                                    glyph_atlas_image.ConvertToImageDataPtr().release())
                             });
 
                 // Populate the glyph lookups

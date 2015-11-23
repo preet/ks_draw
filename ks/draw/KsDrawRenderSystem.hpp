@@ -707,7 +707,8 @@ namespace ks
                         auto& texture = desc.first;
                         auto tex_unit = desc.second;
 
-                        if(texture->GetUpdateCount() > 0)
+                        if((texture->GetUpdateCount() > 0) ||
+                            texture->GetParamsUpdated())
                         {
                             texture->GLBind(m_state_set.get(),tex_unit);
                             texture->GLSync();
