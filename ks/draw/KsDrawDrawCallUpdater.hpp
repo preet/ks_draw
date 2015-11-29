@@ -394,21 +394,19 @@ namespace ks
                     // Update the vertex buffer
                     if(keep_buff_data) {
                         buffer->UpdateBuffer(
-                                    gl::Buffer::Update{
-                                        gl::Buffer::Update::KeepSrcData,
-                                        vx_range.start,
-                                        0,vx_range.size,
-                                        vx_data.get()
-                                    });
-                    }
-                    else {
-                        buffer->UpdateBuffer(
-                                    gl::Buffer::Update{
+                                    make_unique<gl::Buffer::UpdateKeepData>(
                                         gl::Buffer::Update::Defaults,
                                         vx_range.start,
                                         0,vx_range.size,
-                                        vx_data.release()
-                                    });
+                                        vx_data.get()));
+                    }
+                    else {
+                        buffer->UpdateBuffer(
+                                    make_unique<gl::Buffer::UpdateFreeData>(
+                                        gl::Buffer::Update::Defaults,
+                                        vx_range.start,
+                                        0,vx_range.size,
+                                        vx_data.release()));
                     }
 
                     m_list_buffers_to_sync.insert(buffer.get());
@@ -447,21 +445,19 @@ namespace ks
                     // Update the index buffer
                     if(keep_buff_data) {
                         buffer->UpdateBuffer(
-                                    gl::Buffer::Update{
-                                        gl::Buffer::Update::KeepSrcData,
-                                        geometry.ix_range.start,
-                                        0,geometry.ix_range.size,
-                                        ix_data.get()
-                                    });
-                    }
-                    else {
-                        buffer->UpdateBuffer(
-                                    gl::Buffer::Update{
+                                    make_unique<gl::Buffer::UpdateKeepData>(
                                         gl::Buffer::Update::Defaults,
                                         geometry.ix_range.start,
                                         0,geometry.ix_range.size,
-                                        ix_data.release()
-                                    });
+                                        ix_data.get()));
+                    }
+                    else {
+                        buffer->UpdateBuffer(
+                                    make_unique<gl::Buffer::UpdateFreeData>(
+                                        gl::Buffer::Update::Defaults,
+                                        geometry.ix_range.start,
+                                        0,geometry.ix_range.size,
+                                        ix_data.release()));
                     }
 
                     m_list_buffers_to_sync.insert(buffer.get());
@@ -508,12 +504,11 @@ namespace ks
                     assert(vx_range.size == list_vx_sz);
 
                     // Reserve space for an entire block in the gl buffer
+                    // (just uploads null data)
                     vx_range.block->data->UpdateBuffer(
-                                gl::Buffer::Update{
-                                    gl::Buffer::Update::ReUpload |
-                                    gl::Buffer::Update::KeepSrcData,
-                                    0,0,block_sz,nullptr
-                                });
+                                make_unique<gl::Buffer::Update>(
+                                    gl::Buffer::Update::ReUpload,
+                                    0,0,block_sz));
                 }
             }
 
@@ -548,11 +543,9 @@ namespace ks
                     assert(geometry.ix_range.size == list_ix_sz);
 
                     geometry.ix_range.block->data->UpdateBuffer(
-                                gl::Buffer::Update{
-                                    gl::Buffer::Update::ReUpload |
-                                    gl::Buffer::Update::KeepSrcData,
-                                    0,0,block_sz,nullptr
-                                });
+                                make_unique<gl::Buffer::Update>(
+                                    gl::Buffer::Update::ReUpload,
+                                    0,0,block_sz));
                 }
 
                 geometry.ix_range_valid = true;

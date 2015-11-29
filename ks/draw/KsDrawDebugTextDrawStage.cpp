@@ -462,13 +462,11 @@ namespace ks
                 }
 
                 m_vertex_buffer->UpdateBuffer(
-                            gl::Buffer::Update{
-                                gl::Buffer::Update::ReUpload |
-                                gl::Buffer::Update::KeepSrcData,
+                            make_unique<gl::Buffer::UpdateKeepData>(
+                                gl::Buffer::Update::ReUpload,
                                 0,0,
                                 list_vx_ptr->size(),
-                                list_vx_ptr.get()
-                            });
+                                list_vx_ptr.get()));
 
                 m_vertex_buffer->GLBind();
                 m_vertex_buffer->GLSync();
