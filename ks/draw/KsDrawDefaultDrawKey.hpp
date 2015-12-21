@@ -38,23 +38,23 @@ namespace ks
             // [14]: BatchGroup
             // [1]: UpdatePriority
 
-            // starting bit position
-            static const u8 k_sbit_shader = 60;
-            static const u8 k_sbit_depth_config = 56;
-            static const u8 k_sbit_blend_config = 50;
-            static const u8 k_sbit_stencil_config = 46;
-            static const u8 k_sbit_texture_set = 37;
-            static const u8 k_sbit_uniform_set = 31;
-            static const u8 k_sbit_primitive = 28;
-
             // number of bits
-            static const u8 k_bits_shader = 5;
-            static const u8 k_bits_depth_config = 4;
-            static const u8 k_bits_blend_config = 6;
-            static const u8 k_bits_stencil_config = 4;
-            static const u8 k_bits_texture_set = 9;
-            static const u8 k_bits_uniform_set = 6;
-            static const u8 k_bits_primitive = 3;
+            static const u8 k_bits_primitive        = 3;
+            static const u8 k_bits_uniform_set      = 6;
+            static const u8 k_bits_texture_set      = 9;
+            static const u8 k_bits_stencil_config   = 4;
+            static const u8 k_bits_blend_config     = 6;
+            static const u8 k_bits_depth_config     = 4;
+            static const u8 k_bits_shader           = 5;
+
+            // starting bit position
+            static const u8 k_sbit_primitive        = 0;
+            static const u8 k_sbit_uniform_set      = k_sbit_primitive+k_bits_primitive;
+            static const u8 k_sbit_texture_set      = k_sbit_uniform_set+k_bits_uniform_set;
+            static const u8 k_sbit_stencil_config   = k_sbit_texture_set+k_bits_texture_set;
+            static const u8 k_sbit_blend_config     = k_sbit_stencil_config+k_bits_stencil_config;
+            static const u8 k_sbit_depth_config     = k_sbit_blend_config+k_bits_blend_config;
+            static const u8 k_sbit_shader           = k_sbit_depth_config+k_bits_depth_config;
 
             // mask
             template<u8 sbit,u8 bits>

@@ -102,6 +102,11 @@ namespace test
             return m_batch_system.get();
         }
 
+        shared_ptr<gui::Window> GetWindow()
+        {
+            return m_window.lock();
+        }
+
         void OnPause()
         {
             m_update_timer->Stop();
@@ -114,6 +119,7 @@ namespace test
 
 
         Signal<> signal_before_update;
+        Signal<> signal_before_render;
 
     private:
         // Should be called from the context
@@ -195,6 +201,7 @@ namespace test
 
         void onRender()
         {
+            signal_before_render.Emit();
             m_render_system->Render();
         }
 
