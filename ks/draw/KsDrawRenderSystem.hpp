@@ -188,6 +188,7 @@ namespace ks
                 // Setup DrawStages
                 m_graph_draw_stages_async.AddNode(nullptr);
                 m_debug_text_draw_stage = make_unique<DebugTextDrawStage>();
+                m_enable_debug_text_draw_stage = true;
 
                 // (the debug text draw stage is not part of
                 //  the draw stage node graph)
@@ -211,6 +212,11 @@ namespace ks
             RenderDataComponentList* GetRenderDataComponentList() const
             {
                 return m_cmlist_render_data;
+            }
+
+            void ShowDebugText(bool show)
+            {
+                m_enable_debug_text_draw_stage = show;
             }
 
             // ============================================================= //
@@ -627,20 +633,23 @@ namespace ks
                 // Render debug text
                 m_stats.GenRenderText();
 
-                glm::vec4 const text_color{1,1,1,1};
-                std::string render_debug_text =
-                        m_stats.text_update_times+
-                        m_stats.text_render_times+
-                        m_stats.text_render_data+
-                        m_stats.text_update_data;
+                if(m_enable_debug_text_draw_stage)
+                {
+                    glm::vec4 const text_color{1,1,1,1};
+                    std::string render_debug_text =
+                            m_stats.text_update_times+
+                            m_stats.text_render_times+
+                            m_stats.text_render_data+
+                            m_stats.text_update_data;
 
-                m_debug_text_draw_stage->SetText(
-                            glm::vec2{-1,-0.5},
-                            glm::vec2{0,-1},
-                            text_color,
-                            render_debug_text);
+                    m_debug_text_draw_stage->SetText(
+                                glm::vec2{-1,-0.5},
+                                glm::vec2{0,-1},
+                                text_color,
+                                render_debug_text);
 
-                m_debug_text_draw_stage->Render(stage_params);
+                    m_debug_text_draw_stage->Render(stage_params);
+                }
             }
 
         private:
@@ -807,6 +816,7 @@ namespace ks
             Graph<shared_ptr<DrawStage>,u8> m_graph_draw_stages_async;
 
             unique_ptr<DebugTextDrawStage> m_debug_text_draw_stage;
+            bool m_enable_debug_text_draw_stage;
 
             // == Shaders == //
             RecycleIndexListSync<shared_ptr<gl::ShaderProgram>> m_list_shaders;
