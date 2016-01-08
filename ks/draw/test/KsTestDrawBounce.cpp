@@ -860,7 +860,7 @@ int main(int argc, char* argv[])
             make_object<test::Scene>(
                 scene_evl,
                 window,
-                std::chrono::milliseconds(15));
+                Milliseconds(15));
 
     shared_ptr<test::Updater> test_updater =
             make_object<test::Updater>(

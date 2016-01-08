@@ -481,8 +481,8 @@ namespace ks
                     throw GeometryBufferAllocFailed(
                                 "draw: GeometryUpdateTask: "
                                 "list_vx size exceeds capacity: "
-                                "block_sz: "+ks::to_string(block_sz)+", "
-                                "list_vx_sz: "+ks::to_string(list_vx_sz));
+                                "block_sz: "+ks::ToString(block_sz)+", "
+                                "list_vx_sz: "+ks::ToString(list_vx_sz));
                 }
 
                 created_buffer = false;

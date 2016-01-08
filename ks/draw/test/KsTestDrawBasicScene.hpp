@@ -62,7 +62,7 @@ namespace test
         Scene(ks::Object::Key const &key,
               shared_ptr<EventLoop> event_loop,
               shared_ptr<gui::Window> window,
-              std::chrono::milliseconds update_dt_ms) :
+              Milliseconds update_dt_ms) :
             ks::draw::Scene<SceneKey>(key,event_loop),
             m_window(window),
             m_update_dt_ms(update_dt_ms)
@@ -206,7 +206,7 @@ namespace test
         }
 
         weak_ptr<gui::Window> m_window;
-        std::chrono::milliseconds m_update_dt_ms;
+        Milliseconds m_update_dt_ms;
         shared_ptr<CallbackTimer> m_update_timer;
         unique_ptr<RenderSystem> m_render_system;
         unique_ptr<BatchSystem> m_batch_system;

@@ -51,13 +51,13 @@ namespace ks
             text_render_times.clear();
 
             text_render_data += "shader/rop/tex/calls: " +
-                    ks::to_string(shader_switches) + "/" +
-                    ks::to_string(raster_ops)+ "/" +
-                    ks::to_string(texture_switches) + "/" +
-                    ks::to_string(draw_calls)+
+                    ks::ToString(shader_switches) + "/" +
+                    ks::ToString(raster_ops)+ "/" +
+                    ks::ToString(texture_switches) + "/" +
+                    ks::ToString(draw_calls)+
                     "\n";
 
-            text_render_times += "render: " + ks::to_string_format(render_ms,3,7,'0') + "ms\n";
+            text_render_times += "render: " + ks::ToStringFormat(render_ms,3,7,'0') + "ms\n";
         }
 
         void RenderStats::GenUpdateText()
@@ -65,10 +65,10 @@ namespace ks
             text_update_data.clear();
             text_update_times.clear();
 
-            text_update_times += "update: " + ks::to_string_format(update_ms,3,7,'0') + "ms\n";
-            text_update_times += "sync: " + ks::to_string_format(sync_ms,3,7,'0') + "ms\n";
-            text_update_data += "buffer count/mem: " + ks::to_string(buffer_count) +
-                           "/" + ks::to_string(buffer_mem_bytes) + " bytes";
+            text_update_times += "update: " + ks::ToStringFormat(update_ms,3,7,'0') + "ms\n";
+            text_update_times += "sync: " + ks::ToStringFormat(sync_ms,3,7,'0') + "ms\n";
+            text_update_data += "buffer count/mem: " + ks::ToString(buffer_count) +
+                           "/" + ks::ToString(buffer_mem_bytes) + " bytes";
         }
     }
 }

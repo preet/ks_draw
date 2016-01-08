@@ -227,7 +227,7 @@ namespace test
             m_uf_update_timer =
                     make_object<CallbackTimer>(
                         m_scene->GetEventLoop(),
-                        std::chrono::milliseconds(1000),
+                        Milliseconds(1000),
                         [list_uniforms]()
                         {
                             gl::UniformArray<float>* u_fa_color =
@@ -308,7 +308,7 @@ int main(int argc, char* argv[])
             make_object<test::Scene>(
                 scene_evl,
                 window,
-                std::chrono::milliseconds(15));
+                Milliseconds(15));
 
     shared_ptr<test::Updater> test_updater =
             make_object<test::Updater>(
