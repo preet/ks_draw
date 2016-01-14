@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2015 Preet Desai (preet.desai@gmail.com)
+   Copyright (C) 2015-2016 Preet Desai (preet.desai@gmail.com)
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 */
 
 #include <ks/shared/KsCallbackTimer.hpp>
+#include <ks/gui/KsGuiApplication.hpp>
 #include <ks/gui/KsGuiWindow.hpp>
 #include <ks/draw/KsDrawScene.hpp>
 #include <ks/draw/KsDrawRenderSystem.hpp>
@@ -60,12 +61,13 @@ namespace test
         using base_type = ks::draw::Scene<SceneKey>;
 
         Scene(ks::Object::Key const &key,
-              shared_ptr<EventLoop> event_loop,
-              shared_ptr<gui::Window> window,
-              Milliseconds update_dt_ms) :
-            ks::draw::Scene<SceneKey>(key,event_loop),
-            m_window(window),
-            m_update_dt_ms(update_dt_ms)
+              weak_ptr<gui::Application> app,
+              weak_ptr<gui::Window> win) :
+            ks::draw::Scene<SceneKey>(
+                key,app.lock()->GetEventLoop()),
+            m_app(app),
+            m_win(win),
+            m_running(false)
         {
             // Create Systems
             m_render_system =
@@ -78,16 +80,37 @@ namespace test
         }
 
         void Init(ks::Object::Key const &,
-                  shared_ptr<test::Scene> const &)
+                  shared_ptr<test::Scene> const &scene)
         {
-            // Post the init task to this scene's EventLoop
-            auto init_task =
-                    make_shared<ks::Task>(
-                        [this](){
-                            this->onInit();
-                        });
+            auto app = m_app.lock();
 
-            this->GetEventLoop()->PostTask(init_task);
+            // Application ---> Scene
+            app->signal_init.Connect(
+                        scene,
+                        &Scene::onAppInit);
+
+            app->signal_pause.Connect(
+                        scene,
+                        &Scene::onAppPause,
+                        ks::ConnectionType::Direct);
+
+            app->signal_resume.Connect(
+                        scene,
+                        &Scene::onAppResume);
+
+            app->signal_quit.Connect(
+                        scene,
+                        &Scene::onAppQuit,
+                        ks::ConnectionType::Direct);
+
+            app->signal_processed_events->Connect(
+                        scene,
+                        &Scene::onAppProcEvents);
+
+            // Scene ---> Application
+            signal_app_process_events.Connect(
+                        app,
+                        &gui::Application::ProcessEvents);
         }
 
         ~Scene() {}
@@ -104,112 +127,72 @@ namespace test
 
         shared_ptr<gui::Window> GetWindow()
         {
-            return m_window.lock();
+            return m_win.lock();
         }
-
-        void OnPause()
-        {
-            m_update_timer->Stop();
-        }
-
-        void OnResume()
-        {
-            m_update_timer->Start();
-        }
-
 
         Signal<> signal_before_update;
         Signal<> signal_before_render;
 
+
     private:
-        // Should be called from the context
-        // of this Scene's event loop
-        void onInit()
+        void onAppInit()
         {
-            shared_ptr<test::Scene> this_scene =
-                    std::static_pointer_cast<test::Scene>(
-                        shared_from_this());
-
-            // Create update timer
-            Scene* scene_ptr = this_scene.get();
-
-            this_scene->m_update_timer =
-                    make_object<CallbackTimer>(
-                        this_scene->GetEventLoop(),
-                        this_scene->m_update_dt_ms,
-                        [=](){ scene_ptr->onUpdate(); });
-
-
-            // Do the first Sync (is this necessary?)
-            auto sync_callback = std::bind(&Scene::onSync,this);
-            shared_ptr<gui::Window> window = m_window.lock();
-            gui::Window* window_ptr = window.get();
-            auto sync_task =
-                    make_shared<ks::Task>(
-                        [window_ptr,sync_callback](){
-                            window_ptr->InvokeWithContext(sync_callback);
-                        });
-
-            window->GetEventLoop()->PostTask(sync_task);
-            sync_task->Wait();
-
-
-            // Start updates
-            m_update_timer->Start();
+            m_running = true;
+            signal_app_process_events.Emit();
         }
 
-        void onUpdate()
+        void onAppPause()
         {
-            signal_before_update.Emit();
-
-            draw::time_point a;
-            draw::time_point b;
-
-            m_batch_system->Update(a,b);
-            m_render_system->Update(a,b);
-
-            // Sync
-            auto window = m_window.lock();
-            gui::Window* window_ptr = window.get();
-
-            auto sync_callback = std::bind(&Scene::onSync,this);
-            auto sync_task =
-                    make_shared<ks::Task>(
-                        [window_ptr,sync_callback](){
-                            window_ptr->InvokeWithContext(sync_callback);
-                        });
-
-            window->GetEventLoop()->PostTask(sync_task);
-            sync_task->Wait();
-
-            // Render
-            auto render_callback = std::bind(&Scene::onRender,this);
-            auto render_task =
-                    make_shared<ks::Task>(
-                        [window_ptr,render_callback](){
-                            window_ptr->InvokeWithContext(render_callback);
-                            window_ptr->SwapBuffers();
-                        });
-
-            window->GetEventLoop()->PostTask(render_task);
+            m_running = false;
         }
 
-        void onSync()
+        void onAppResume()
         {
-            m_render_system->Sync();
+            m_running = true;
+            signal_app_process_events.Emit();
         }
 
-        void onRender()
+        void onAppQuit()
         {
-            signal_before_render.Emit();
-            m_render_system->Render();
+            m_running = false;
         }
 
-        weak_ptr<gui::Window> m_window;
-        Milliseconds m_update_dt_ms;
-        shared_ptr<CallbackTimer> m_update_timer;
+        void onAppProcEvents(bool)
+        {
+            if(m_running)
+            {
+                // Update
+                signal_before_update.Emit();
+
+                draw::time_point a;
+                draw::time_point b;
+
+                m_batch_system->Update(a,b);
+                m_render_system->Update(a,b);
+
+                // Sync + Render
+                auto win = m_win.lock();
+                if(win->SetContextCurrent())
+                {
+                    m_render_system->Sync();
+                    m_render_system->Render();
+                    win->SwapBuffers();
+                }
+
+                // Schedule next update, vsync will eventually
+                // block this until the next vblank
+                signal_app_process_events.Emit();
+            }
+        }
+
+        weak_ptr<gui::Application> m_app;
+        weak_ptr<gui::Window> m_win;
+        std::atomic<bool> m_running;
+
         unique_ptr<RenderSystem> m_render_system;
         unique_ptr<BatchSystem> m_batch_system;
+
+        Signal<> signal_app_process_events;
     };
 
     // ============================================================= //

@@ -1,6 +1,5 @@
- 
 /*
-   Copyright (C) 2015 Preet Desai (preet.desai@gmail.com)
+   Copyright (C) 2015-2016 Preet Desai (preet.desai@gmail.com)
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -58,16 +57,6 @@ namespace ks
             }
 
         protected:
-            // Called by the update thread
-            virtual void onUpdate() = 0;
-
-            // Called by the render thread while the
-            // update thread is blocked
-            virtual void onSync() = 0;
-
-            // Called by the render thread
-            virtual void onRender() = 0;
-
             Graph<shared_ptr<System>> m_system_graph;
         };
     }

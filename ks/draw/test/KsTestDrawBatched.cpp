@@ -1,5 +1,5 @@
 /*
-   Copyright (C) 2015 Preet Desai (preet.desai@gmail.com)
+   Copyright (C) 2015-2016 Preet Desai (preet.desai@gmail.com)
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -132,7 +132,8 @@ namespace test
         {
             m_scene->signal_before_update.Connect(
                         this_updater,
-                        &Updater::onUpdate);
+                        &Updater::onUpdate,
+                        ks::ConnectionType::Direct);
         }
 
         ~Updater() = default;
@@ -192,27 +193,34 @@ namespace test
                 m_batch_mf_id = batch_system->RegisterBatch(batch_mf);
 
                 m_setup = true;
+                m_last_update = std::chrono::high_resolution_clock::now();
             }
 
-            // Remove prev entities
-            for(Id ent_id : m_list_triangle_ents) {
-                m_scene->RemoveEntity(ent_id);
-            }
-            m_list_triangle_ents.clear();
+            TimePoint now = std::chrono::high_resolution_clock::now();
+            if(CalcDuration<Milliseconds>(m_last_update,now).count() > 500)
+            {
+                // Remove prev entities
+                for(Id ent_id : m_list_triangle_ents) {
+                    m_scene->RemoveEntity(ent_id);
+                }
+                m_list_triangle_ents.clear();
 
-            // Add new entities
-            for(uint i=0; i < 200; i++) {
-                createTriangle(m_batch_sf_id);
-            }
-            for(uint i=0; i < 50; i++) {
-                createTriangle(m_batch_mf_id);
-            }
+                // Add new entities
+                for(uint i=0; i < 200; i++) {
+                    createTriangle(m_batch_sf_id);
+                }
+                for(uint i=0; i < 50; i++) {
+                    createTriangle(m_batch_mf_id);
+                }
 
-            m_upd_count++;
-            if(m_upd_count == 40) {
-                Signal<> quit;
-                quit.Connect(app,&gui::Application::Quit);
-                quit.Emit();
+                m_upd_count++;
+                if(m_upd_count == 40) {
+                    Signal<> quit;
+                    quit.Connect(app,&gui::Application::Quit);
+                    quit.Emit();
+                }
+
+                m_last_update = now;
             }
         }
 
@@ -301,6 +309,8 @@ namespace test
         uint m_upd_count;
 
         std::vector<Id> m_list_triangle_ents;
+
+        TimePoint m_last_update;
     };
 }
 
@@ -315,48 +325,31 @@ int main(int argc, char* argv[])
     // Create application
     test::app = make_object<gui::Application>();
 
-    // Create the render thread
-    shared_ptr<EventLoop> render_evl = make_shared<EventLoop>();
-
-    std::thread render_thread =
-            EventLoop::LaunchInThread(render_evl);
-
-    // Create the scene thread
-    shared_ptr<EventLoop> scene_evl = make_shared<EventLoop>();
-
-    std::thread scene_thread =
-            EventLoop::LaunchInThread(scene_evl);
-
-
     // Create window
     gui::Window::Attributes win_attribs;
     gui::Window::Properties win_props;
+    win_props.swap_interval = 1;
 
     shared_ptr<gui::Window> window =
             test::app->CreateWindow(
-                render_evl,
+                test::app->GetEventLoop(),
                 win_attribs,
                 win_props);
 
     shared_ptr<test::Scene> scene =
             make_object<test::Scene>(
-                scene_evl,
-                window,
-                Milliseconds(500));
+                test::app,
+                window);
 
     shared_ptr<test::Updater> test_updater =
             make_object<test::Updater>(
-                scene_evl,
+                test::app->GetEventLoop(),
                 scene);
 
     (void)test_updater;
 
     // Run!
     test::app->Run();
-
-    // Stop threads
-    EventLoop::RemoveFromThread(scene_evl,scene_thread,true);
-    EventLoop::RemoveFromThread(render_evl,render_thread,true);
 
     return 0;
 }
