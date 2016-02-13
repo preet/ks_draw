@@ -173,8 +173,8 @@ namespace test
                     list_pixels.push_back(RGBA8{r,g,b,a});
                 }
 
-                unique_ptr<gl::Texture2D> texture =
-                        make_unique<gl::Texture2D>(
+                shared_ptr<gl::Texture2D> texture =
+                        make_shared<gl::Texture2D>(
                             gl::Texture2D::Format::RGBA8);
 
                 texture->SetFilterModes(

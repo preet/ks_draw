@@ -156,7 +156,7 @@ namespace ks
         struct TextureSet final
         {
             // <Texture,tex unit>
-            std::vector<std::pair<unique_ptr<gl::Texture2D>,uint>> list_texture_desc;
+            std::vector<std::pair<shared_ptr<gl::Texture2D>,uint>> list_texture_desc;
         };
 
         struct UniformSet final
