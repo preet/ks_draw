@@ -206,7 +206,7 @@ namespace test
                         make_shared<draw::UniformSet>();
 
                 uniform_set->list_uniforms.push_back(
-                            make_unique<gl::Uniform<GLint>>(
+                            make_shared<gl::Uniform<GLint>>(
                                 "u_s_tex0",1));
 
                 m_uniform_set_id = render_system->RegisterUniformSet(uniform_set);

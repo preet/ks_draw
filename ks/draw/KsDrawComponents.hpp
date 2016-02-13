@@ -161,7 +161,7 @@ namespace ks
 
         struct UniformSet final
         {
-            ListUniformUPtrs list_uniforms;
+            std::vector<shared_ptr<gl::UniformBase>> list_uniforms;
         };
 
         // ============================================================= //
