@@ -95,7 +95,6 @@ namespace ks
 
                 Id uid{0};
                 Id merged_ent{0};
-                Geometry* merged_gm{nullptr};
                 bool rebuild{false};
 
                 std::vector<Id> list_ents_prev;
@@ -212,7 +211,6 @@ namespace ks
                 batch_group->batch = batch;
                 batch_group->uid = m_batch_group_uid_counter++;
                 batch_group->merged_ent = merged_ent_id;
-                batch_group->merged_gm = &geometry;
 
                 return batch_id;
             }
@@ -426,10 +424,14 @@ namespace ks
                             }
                         }
 
+                        auto& merged_gm =
+                                m_cmlist_render_data->GetComponent(
+                                    batch_group->merged_ent).GetGeometry();
+
                         detail::CreateMergedGeometry(
                                     batch->GetBufferLayout(),
                                     list_geometry,
-                                    batch_group->merged_gm);
+                                    &merged_gm);
 
                         // Clear updates
                         for(auto ent_id : batch_group->list_ents_upd)
@@ -439,7 +441,7 @@ namespace ks
                             batch_data.GetGeometry().ClearGeometryUpdates();
                         }
 
-                        batch_group->merged_gm->SetAllUpdated();
+                        merged_gm.SetAllUpdated();
                     }
 
                     batch_group->list_ents_prev =
