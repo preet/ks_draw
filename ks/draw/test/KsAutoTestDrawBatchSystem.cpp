@@ -262,7 +262,6 @@ TEST_CASE("ks::draw::BatchSystem")
                 ks::draw::UpdatePriority::SingleFrame);
 
     auto const batch0_id = batch_system->RegisterBatch(batch0);
-    auto const batch0_ent = batch_system->GetBatchEntity(batch0_id);
 
 
     // Create a MultiFrame batch group
@@ -276,13 +275,14 @@ TEST_CASE("ks::draw::BatchSystem")
                 ks::draw::UpdatePriority::MultiFrame);
 
     auto const batch1_id = batch_system->RegisterBatch(batch1);
-    auto const batch1_ent = batch_system->GetBatchEntity(batch1_id);
 
     SECTION("[MultiFrame] unintentionally reused Batch groups")
     {
         // If a MultiFrame batch has its BatchGroup deleted and
         // then recreated before the batch returns, the merged gm
         // will be tied to the 'wrong' group
+
+        // We should be using uids to ensure this doesn't happen
 
         ks::shared_ptr<ks::draw::Batch<ks::draw::DefaultDrawKey>> batch_a =
                 ks::make_shared<ks::draw::Batch<ks::draw::DefaultDrawKey>>(
@@ -294,7 +294,6 @@ TEST_CASE("ks::draw::BatchSystem")
                     ks::draw::UpdatePriority::MultiFrame);
 
         auto const batch_a_id = batch_system->RegisterBatch(batch_a);
-        auto const batch_a_ent = batch_system->GetBatchEntity(batch_a_id);
 
         // Add a couple of entities
         auto const ent1 = scene->CreateEntity();
@@ -324,7 +323,6 @@ TEST_CASE("ks::draw::BatchSystem")
                     ks::draw::UpdatePriority::MultiFrame);
 
         auto const batch_b_id = batch_system->RegisterBatch(batch_b);
-        auto const batch_b_ent = batch_system->GetBatchEntity(batch_b_id);
 
         REQUIRE(batch_a_id == batch_b_id);
 
@@ -335,16 +333,12 @@ TEST_CASE("ks::draw::BatchSystem")
 
         // If the new batch's merged entity has a non-empty
         // RenderData, the wrong data was assigned. It must be empty.
-        auto& merged_gm_b = list_render_data[batch_b_ent].GetGeometry();
-        REQUIRE(merged_gm_b.GetVertexBuffer(0)->empty());
+        auto const list_batch_b_ents = batch_system->GetBatchEntities(batch_b_id);
+        REQUIRE(list_batch_b_ents.size()==0);
     }
 
     SECTION("Add/Remove/Update Entities [SingleFrame]")
     {
-        auto& geometry_batch0 = list_render_data[batch0_ent].GetGeometry();
-        REQUIRE(geometry_batch0.GetVertexBuffer(0)->empty());
-        REQUIRE(geometry_batch0.GetIndexBuffer()->empty());
-
         // Add Entity 1
         // NOTE 'Entity 1 doesn't correspond to Id==1', the
         // Ids aren't obvious because Batches have their own
@@ -355,6 +349,12 @@ TEST_CASE("ks::draw::BatchSystem")
         batch_data1->SetRebuild(true);
 
         batch_system->Update(tp0,tp1);
+
+        auto list_batch0_ents = batch_system->GetBatchEntities(batch0_id);
+        REQUIRE(list_batch0_ents.size()==1);
+        auto& geometry_batch0 =
+                list_render_data[list_batch0_ents[0]].GetGeometry();
+
         REQUIRE(geometry_batch0.GetUpdatedGeometry());
         REQUIRE(geometry_batch0.GetVertexBuffer(0)->size() == GetVertexSizeBytes(2));
         REQUIRE(geometry_batch0.GetIndexBuffer()->size() == GetIndexSizeBytes(2));
@@ -392,9 +392,10 @@ TEST_CASE("ks::draw::BatchSystem")
         // Remove Entity 2
         scene->RemoveEntity(ent2);
         batch_system->Update(tp0,tp1);
-        REQUIRE(geometry_batch0.GetUpdatedGeometry());
-        REQUIRE(geometry_batch0.GetVertexBuffer(0)->empty());
-        REQUIRE(geometry_batch0.GetIndexBuffer()->empty());
+
+        // Shouldn't be any more merged geometries
+        list_batch0_ents = batch_system->GetBatchEntities(batch0_id);
+        REQUIRE(list_batch0_ents.size()==0);
     }
 
     SECTION("PreMerge and PreTask Callbacks")
@@ -446,7 +447,11 @@ TEST_CASE("ks::draw::BatchSystem")
             list_vx.insert(list_vx.end(),list_vx2->begin(),list_vx2->end());
             list_vx.insert(list_vx.end(),list_vx1->begin(),list_vx1->end());
 
-            auto& geometry_batch0 = list_render_data[batch0_ent].GetGeometry();
+            auto const list_batch0_ents = batch_system->GetBatchEntities(batch0_id);
+            REQUIRE(list_batch0_ents.size()==1);
+            auto& geometry_batch0 =
+                    list_render_data[list_batch0_ents[0]].GetGeometry();
+
             auto& vertex_buffer = *(geometry_batch0.GetVertexBuffer(0));
             REQUIRE(list_vx == vertex_buffer);
         }
@@ -518,17 +523,24 @@ TEST_CASE("ks::draw::BatchSystem")
             list_vx.insert(list_vx.end(),list_vx2->begin(),list_vx2->end());
             list_vx.insert(list_vx.end(),list_vx1->begin(),list_vx1->end());
 
-            auto& geometry_batch0 = list_render_data[batch1_ent].GetGeometry();
-            auto& vertex_buffer = *(geometry_batch0.GetVertexBuffer(0));
+
+            auto const list_batch1_ents =
+                    batch_system->GetBatchEntities(batch1_id);
+
+            REQUIRE(list_batch1_ents.size()==1);
+
+            auto& geometry_batch1 =
+                    list_render_data[list_batch1_ents[0]].GetGeometry();
+
+            auto& vertex_buffer = *(geometry_batch1.GetVertexBuffer(0));
             REQUIRE(list_vx == vertex_buffer);
         }
     }
 
     SECTION("Add/Remove/Update Entities [MultiFrame]")
     {
-        auto& geometry_batch0 = list_render_data[batch1_ent].GetGeometry();
-        REQUIRE(geometry_batch0.GetVertexBuffer(0)->empty());
-        REQUIRE(geometry_batch0.GetIndexBuffer()->empty());
+        auto list_batch1_ents = batch_system->GetBatchEntities(batch1_id);
+        REQUIRE(list_batch1_ents.size()==0);
 
         // Add Entity 1
         // NOTE 'Entity 1 doesn't correspond to Id==1', the
@@ -546,6 +558,11 @@ TEST_CASE("ks::draw::BatchSystem")
 
         batch_system->Update(tp0,tp1);
         batch_system->WaitOnMultiFrameBatch();
+
+        list_batch1_ents = batch_system->GetBatchEntities(batch1_id);
+        REQUIRE(list_batch1_ents.size()==1);
+        auto& geometry_batch0 =
+                list_render_data[list_batch1_ents[0]].GetGeometry();
 
         REQUIRE(geometry_batch0.GetUpdatedGeometry());
         REQUIRE(geometry_batch0.GetVertexBuffer(0)->size() == GetVertexSizeBytes(2));
@@ -607,8 +624,7 @@ TEST_CASE("ks::draw::BatchSystem")
         batch_system->Update(tp0,tp1);
         batch_system->WaitOnMultiFrameBatch();
 
-        REQUIRE(geometry_batch0.GetUpdatedGeometry());
-        REQUIRE(geometry_batch0.GetVertexBuffer(0)->empty());
-        REQUIRE(geometry_batch0.GetIndexBuffer()->empty());
+        list_batch1_ents = batch_system->GetBatchEntities(batch1_id);
+        REQUIRE(list_batch1_ents.size()==0);
     }
 }

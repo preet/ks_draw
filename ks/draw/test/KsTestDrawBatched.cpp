@@ -76,8 +76,8 @@ namespace test
 
     // Vertex definition and layout
     struct Vertex {
-        glm::vec4 a_v4_position;
-        glm::u8vec4 a_v4_color;
+        glm::vec4 a_v4_position; // 16
+        glm::u8vec4 a_v4_color; // 4
     };
 
     gl::VertexLayout const vx_layout {
@@ -95,8 +95,12 @@ namespace test
         } // 1*4
     };
 
+    // Don't change the allocator block size.
+    // The total draw calls should fluctuate every update
+    // to show BatchGroups creating and destroying RenderData
+    // as required correctly.
     shared_ptr<draw::VertexBufferAllocator> vx_buff_allocator =
-            make_shared<draw::VertexBufferAllocator>(24000*4);
+            make_shared<draw::VertexBufferAllocator>(20*3*50);
 
     // Buffer layout
     draw::BufferLayout const buffer_layout(
@@ -206,10 +210,17 @@ namespace test
                 m_list_triangle_ents.clear();
 
                 // Add new entities
-                for(uint i=0; i < 200; i++) {
+                // We swap the number of triangles created each
+                // update to check that the batch can create and
+                // remove merged RenderData correctly
+
+                uint const count_sf_tris = (m_upd_count%2==0) ? 200 : 100;
+                uint const count_mf_tris = (m_upd_count%2==0) ? 100 : 50;
+
+                for(uint i=0; i < count_sf_tris; i++) {
                     createTriangle(m_batch_sf_id);
                 }
-                for(uint i=0; i < 50; i++) {
+                for(uint i=0; i < count_mf_tris; i++) {
                     createTriangle(m_batch_mf_id);
                 }
 

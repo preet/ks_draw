@@ -88,6 +88,111 @@ namespace ks
                 }
             }
 
+            // * Splits a list of single geometries into N merged
+            //   geometries
+            std::vector<std::vector<Geometry*>>
+            CreateSplitSingleGeometryLists(
+                    BufferLayout const * buffer_layout,
+                    std::vector<Geometry*> const &list_single_gm_all)
+            {
+                // For each batch group, we have N RenderDatas to represent
+                // the merged geometries. A new RenderData is created when
+                // either the VertexBuffer or IndexBuffer block size is
+                // exceeded. Single geometries are assigned to the RenderData
+                // indices they will be merged in accordingly.
+
+                std::vector<std::vector<Geometry*>> list_list_single_gm;
+
+                if(list_single_gm_all.empty())
+                {
+                    return list_list_single_gm;
+                }
+
+                uint render_data_idx=0;
+                uint vx_block_used=0;
+
+                uint const vx_block_size =
+                        buffer_layout->GetVertexBufferAllocator(0)->
+                        GetBlockSize();
+
+                list_list_single_gm.resize(1);
+
+                if(buffer_layout->GetIsIndexed())
+                {
+                    uint const ix_block_size =
+                            buffer_layout->GetIndexBufferAllocator()->
+                            GetBlockSize();
+
+                    uint ix_block_used=0;
+
+                    for(auto single_gm : list_single_gm_all)
+                    {
+                        uint const single_gm_vxbuff_size =
+                                single_gm->GetVertexBuffer(0)->size();
+
+                        uint const single_gm_ixbuff_size =
+                                single_gm->GetIndexBuffer()->size();
+
+                        vx_block_used += single_gm_vxbuff_size;
+                        ix_block_used += single_gm_ixbuff_size;
+
+                        if((vx_block_used > vx_block_size) ||
+                           (ix_block_used > ix_block_size))
+                        {
+                            if((vx_block_size < single_gm_vxbuff_size) ||
+                               (ix_block_size < single_gm_ixbuff_size))
+                            {
+                                throw ks::Exception(
+                                            ks::Exception::ErrorLevel::ERROR,
+                                            "BatchSystem: Geometry size exceeds "
+                                            "BufferAllocator block size");
+                            }
+
+                            // Create a new single geometry list
+                            list_list_single_gm.emplace_back();
+
+                            render_data_idx++;
+                            vx_block_used = single_gm_vxbuff_size;
+                            ix_block_used = single_gm_ixbuff_size;
+                        }
+
+                        list_list_single_gm[render_data_idx].push_back(single_gm);
+                    }
+                }
+                else
+                {
+                    for(auto single_gm : list_single_gm_all)
+                    {
+                        uint const single_gm_vxbuff_size =
+                                single_gm->GetVertexBuffer(0)->size();
+
+                        vx_block_used += single_gm_vxbuff_size;
+
+                        if(vx_block_used > vx_block_size)
+                        {
+                            if(vx_block_size < single_gm_vxbuff_size)
+                            {
+                                throw ks::Exception(
+                                            ks::Exception::ErrorLevel::ERROR,
+                                            "BatchSystem: Geometry size exceeds "
+                                            "BufferAllocator block size");
+                            }
+
+                            // Create a new single geometry list
+                            list_list_single_gm.emplace_back();
+
+                            render_data_idx++;
+                            vx_block_used = single_gm_vxbuff_size;
+                        }
+
+                        list_list_single_gm[render_data_idx].push_back(single_gm);
+                    }
+                }
+
+                return list_list_single_gm;
+            }
+
+
             // ============================================================= //
             // ============================================================= //
 
@@ -112,6 +217,12 @@ namespace ks
                 return *m_list_batch_desc;
             }
 
+            std::vector<Geometry>&
+            BatchTask::GetListMergedGeometry(uint index)
+            {
+                return m_list_list_merged_gms[index];
+            }
+
             void BatchTask::Cancel()
             {
                 // TODO Cancel not supported, maybe
@@ -131,63 +242,75 @@ namespace ks
                 this->onStarted();
 
                 auto& list_batch_desc = *m_list_batch_desc;
-                for(auto& batch_desc : list_batch_desc)
+
+                m_list_list_merged_gms.clear();
+                m_list_list_merged_gms.resize(list_batch_desc.size());
+
+                for(uint i=0; i < list_batch_desc.size(); i++)
                 {
-                    auto const merged_ent = batch_desc.merged_ent;
-                    auto merged_gm = &(m_list_batch_geometry[merged_ent]);
-
-                    // The merged geometry buffers need to be created
-                    // the first time they are used
-                    if(merged_gm->GetVertexBuffers().empty())
-                    {
-                        auto const vx_buff_count =
-                                batch_desc.buffer_layout->
-                                    GetVertexBufferCount();
-
-                        for(uint i=0; i < vx_buff_count; i++)
-                        {
-                            merged_gm->GetVertexBuffers().push_back(
-                                        make_unique<std::vector<u8>>());
-                        }
-
-                        if(batch_desc.buffer_layout->GetIsIndexed())
-                        {
-                            merged_gm->GetIndexBuffer() =
-                                    make_unique<std::vector<u8>>();
-                        }
-                    }
+                    auto& batch_desc = list_batch_desc[i];
 
                     // Create the single geometry list
-                    std::vector<Geometry*> list_geometry;
-                    list_geometry.reserve(batch_desc.list_ents.size());
+                    std::vector<Geometry*> list_single_gm_all;
+                    list_single_gm_all.reserve(
+                                batch_desc.list_all_single_gm_ent_ids.size());
 
                     // Allow a callback to modify the list of entities
                     // that will be merged together
                     if(m_pre_merge_callback)
                     {
                         auto list_ents_curr =
-                                m_pre_merge_callback(batch_desc.list_ents);
+                                m_pre_merge_callback(
+                                    batch_desc.list_all_single_gm_ent_ids);
 
                         for(auto ent_id : list_ents_curr)
                         {
-                            list_geometry.push_back(
+                            list_single_gm_all.push_back(
                                         &(m_list_batch_geometry[ent_id]));
                         }
                     }
                     else
                     {
-                        for(auto ent_id : batch_desc.list_ents)
+                        for(auto ent_id : batch_desc.list_all_single_gm_ent_ids)
                         {
-                            list_geometry.push_back(
+                            list_single_gm_all.push_back(
                                         &(m_list_batch_geometry[ent_id]));
                         }
                     }
 
-                    // Merge
-                    CreateMergedGeometry(
+                    // Split into lists according to buffer block sizes
+                    auto list_list_single_gm =
+                            CreateSplitSingleGeometryLists(
                                 batch_desc.buffer_layout,
-                                list_geometry,
-                                merged_gm);
+                                list_single_gm_all);
+
+                    auto& list_merged_gms = m_list_list_merged_gms[i];
+                    list_merged_gms.resize(list_list_single_gm.size());
+
+                    for(uint j=0; j < list_list_single_gm.size(); j++)
+                    {
+                        auto const vx_buff_count =
+                                batch_desc.buffer_layout->
+                                GetVertexBufferCount();
+
+                        auto& merged_gm = list_merged_gms[j];
+                        for(uint k=0; k < vx_buff_count; k++)
+                        {
+                            merged_gm.GetVertexBuffers().push_back(
+                                        make_unique<std::vector<u8>>());
+                        }
+                        if(batch_desc.buffer_layout->GetIsIndexed())
+                        {
+                            merged_gm.GetIndexBuffer() =
+                                    make_unique<std::vector<u8>>();
+                        }
+
+                        // Merge single geometries
+                        CreateMergedGeometry(
+                                    batch_desc.buffer_layout,
+                                    list_list_single_gm[j],
+                                    &merged_gm);
+                    }
                 }
 
                 this->onEnded();

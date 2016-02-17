@@ -49,6 +49,11 @@ namespace ks
                                       std::vector<Geometry*> &list_single_gm,
                                       Geometry* merged_gm);
 
+            std::vector<std::vector<Geometry*>>
+            CreateSplitSingleGeometryLists(
+                    BufferLayout const * buffer_layout,
+                    std::vector<Geometry*> const &list_single_gm_all);
+
             class BatchTask final : public ks::ThreadPool::Task
             {
             public:
@@ -56,9 +61,11 @@ namespace ks
                 {
                     Id uid;
                     Id batch_id;
-                    Id merged_ent;
-                    std::vector<Id> list_ents;
                     BufferLayout const * buffer_layout;
+
+                    // The list of single geometries corresponding to
+                    // each merged RenderData
+                    std::vector<Id> list_all_single_gm_ent_ids;
                 };
 
                 BatchTask(unique_ptr<std::vector<BatchDesc>> list_batch_desc,
@@ -68,6 +75,8 @@ namespace ks
                 ~BatchTask();
 
                 std::vector<BatchDesc> const & GetListBatchDesc() const;
+
+                std::vector<Geometry> & GetListMergedGeometry(uint index);
 
                 void Cancel() override;
 
@@ -79,6 +88,10 @@ namespace ks
                 unique_ptr<std::vector<BatchDesc>> m_list_batch_desc;
                 std::vector<Geometry>& m_list_batch_geometry;
                 BatchPreMergeCallback m_pre_merge_callback;
+
+                // The list of merged geometries. Indicies in this
+                // list correspond to BatchDescs in m_list_batch_desc
+                std::vector<std::vector<Geometry>> m_list_list_merged_gms;
             };
         }
 
@@ -94,13 +107,14 @@ namespace ks
                 shared_ptr<Batch<DrawKeyType>> batch;
 
                 Id uid{0};
-                Id merged_ent{0};
                 bool rebuild{false};
 
                 std::vector<Id> list_ents_prev;
                 std::vector<Id> list_ents_curr;
                 std::vector<Id> list_ents_rem;
                 std::vector<Id> list_ents_upd;
+
+                std::vector<Id> list_merged_ent_ids;
             };
 
         public:
@@ -164,61 +178,72 @@ namespace ks
                 return m_list_batch_groups[batch_id]->batch;
             }
 
-            Id GetBatchEntity(Id batch_id)
+            std::vector<Id> GetBatchEntities(Id batch_id)
             {
-                return m_list_batch_groups[batch_id]->merged_ent;
+                return m_list_batch_groups[batch_id]->list_merged_ent_ids;
             }
 
             Id RegisterBatch(shared_ptr<Batch<DrawKeyType>> batch)
             {
+                // BufferLayouts for Batches must have VertexBuffer block
+                // sizes that all contain the same number of vertices.
+                // Batched VertexBuffers should not be used by other
+                // geometries/RenderData
+
+                auto buff_layout = batch->GetBufferLayout();
+
+                uint const vx_buff_count =
+                        buff_layout->GetVertexBufferCount();
+
+                uint const vx_block_size =
+                        buff_layout->GetVertexBufferAllocator(0)->
+                        GetBlockSize();
+
+                uint const vx_size_bytes =
+                        buff_layout->GetVertexSizeBytes(0);
+
+                uint const vx_block_capacity =
+                        vx_block_size/vx_size_bytes;
+
+                for(uint i=1; i < vx_buff_count; i++)
+                {
+                    uint vx_capacity_i =
+                            (buff_layout->
+                             GetVertexBufferAllocator(i)->
+                             GetBlockSize()) /
+                            (buff_layout->
+                             GetVertexSizeBytes(i));
+
+                    if(vx_capacity_i != vx_block_capacity)
+                    {
+                        throw ks::Exception(
+                                    ks::Exception::ErrorLevel::ERROR,
+                                    "BatchSystem: Mismatching VertexBuffer"
+                                    "block sizes in BufferLayout");
+                    }
+                }
+
                 auto const batch_id =
                         m_list_batch_groups.Add(
                             make_unique<BatchGroup>());
 
                 auto& batch_group = m_list_batch_groups.Get(batch_id);
 
-                auto merged_ent_id = m_scene->CreateEntity();
-
-                // Create the RenderData
-                auto& render_data =
-                        m_cmlist_render_data->Create(
-                            merged_ent_id,
-                            batch->GetKey(),
-                            batch->GetBufferLayout(),
-                            batch->GetUniformList(),
-                            batch->GetDrawStages(),
-                            batch->GetTransparency());
-
-                // TODO set geometry's RetainGeometry
-                auto& geometry = render_data.GetGeometry();
-
-                auto const vx_buff_count =
-                        batch->GetBufferLayout()->
-                            GetVertexBufferCount();
-
-                for(uint i=0; i < vx_buff_count; i++)
-                {
-                    geometry.GetVertexBuffers().
-                            push_back(make_unique<std::vector<u8>>());
-                }
-
-                if(batch->GetBufferLayout()->GetIsIndexed())
-                {
-                    geometry.GetIndexBuffer() =
-                            make_unique<std::vector<u8>>();
-                }
-
                 batch_group->batch = batch;
                 batch_group->uid = m_batch_group_uid_counter++;
-                batch_group->merged_ent = merged_ent_id;
 
                 return batch_id;
             }
 
+
             void RemoveBatch(Id batch_id)
             {
                 auto& batch_group = m_list_batch_groups.Get(batch_id);
-                m_scene->RemoveEntity(batch_group->merged_ent);
+
+                for(auto& merged_ent_id : batch_group->list_merged_ent_ids)
+                {
+                    m_scene->RemoveEntity(merged_ent_id);
+                }
                 m_list_batch_groups.Remove(batch_id);
             }
 
@@ -320,6 +345,7 @@ namespace ks
                     }
                 }
 
+
                 updateBatchGroupsSF(list_sf_batch_groups,
                                     list_batch_data);
 
@@ -396,8 +422,9 @@ namespace ks
 
                     if(batch_group->rebuild)
                     {
-                        std::vector<Geometry*> list_geometry;
-                        list_geometry.reserve(batch_group->list_ents_curr.size());
+                        // Get the list of single geometries
+                        std::vector<Geometry*> list_single_gm_all;
+                        list_single_gm_all.reserve(batch_group->list_ents_curr.size());
 
                         // Allow a callback to modify the list of entities
                         // that will be merged together. Note we don't save
@@ -411,7 +438,7 @@ namespace ks
 
                             for(auto ent_id : list_ents_curr)
                             {
-                                list_geometry.push_back(
+                                list_single_gm_all.push_back(
                                             &(list_batch_data[ent_id].GetGeometry()));
                             }
                         }
@@ -419,19 +446,33 @@ namespace ks
                         {
                             for(auto ent_id : batch_group->list_ents_curr)
                             {
-                                list_geometry.push_back(
+                                list_single_gm_all.push_back(
                                             &(list_batch_data[ent_id].GetGeometry()));
                             }
                         }
 
-                        auto& merged_gm =
-                                m_cmlist_render_data->GetComponent(
-                                    batch_group->merged_ent).GetGeometry();
-
-                        detail::CreateMergedGeometry(
+                        auto list_list_single_gm =
+                                detail::CreateSplitSingleGeometryLists(
                                     batch->GetBufferLayout(),
-                                    list_geometry,
-                                    &merged_gm);
+                                    list_single_gm_all);
+
+                        resizeMergedEntityListForBatchGroup(
+                                    group,list_list_single_gm.size());
+
+                        for(uint i=0; i < list_list_single_gm.size(); i++)
+                        {
+                            auto& merged_gm =
+                                    m_cmlist_render_data->GetComponent(
+                                        batch_group->list_merged_ent_ids[i]).
+                                    GetGeometry();
+
+                            detail::CreateMergedGeometry(
+                                        batch->GetBufferLayout(),
+                                        list_list_single_gm[i],
+                                        &merged_gm);
+
+                            merged_gm.SetAllUpdated();
+                        }
 
                         // Clear updates
                         for(auto ent_id : batch_group->list_ents_upd)
@@ -440,8 +481,6 @@ namespace ks
                             batch_data.SetRebuild(false);
                             batch_data.GetGeometry().ClearGeometryUpdates();
                         }
-
-                        merged_gm.SetAllUpdated();
                     }
 
                     batch_group->list_ents_prev =
@@ -490,7 +529,7 @@ namespace ks
                     }
                 }
 
-                // Copy updated merged geometry
+                // Copy updated geometry we want to merge
                 for(auto const group : list_mf_batch_groups)
                 {
                     auto& batch_group = m_list_batch_groups[group];
@@ -523,30 +562,49 @@ namespace ks
 
                 // Sync back the merged geometry from m_list_batch_geometry
                 // to its corresponding RenderData geometry
-                for(auto const & batch_desc : m_batch_task->GetListBatchDesc())
+                for(uint i=0; i < m_batch_task->GetListBatchDesc().size(); i++)
                 {
-                    // Ensure the batch group is still valid
+                    auto const &batch_desc = m_batch_task->GetListBatchDesc()[i];
                     auto const batch_id = batch_desc.batch_id;
+
                     if(batch_id < m_list_batch_groups.GetList().size() &&
                        m_list_batch_groups[batch_id] &&
                        m_list_batch_groups[batch_id]->uid == batch_desc.uid)
                     {
-                        auto const merged_ent = batch_desc.merged_ent;
+                        auto& list_merged_gm =
+                                m_batch_task->GetListMergedGeometry(i);
 
-                        // TODO move instead of copy
-                        CopyGeometryBuffers(
-                                    m_list_batch_geometry[merged_ent],
-                                    list_render_data[merged_ent].GetGeometry());
-
-                        list_render_data[merged_ent].GetGeometry().SetAllUpdated();
+                        // Ensure there are enough merged RenderData
+                        resizeMergedEntityListForBatchGroup(
+                                    batch_id,
+                                    list_merged_gm.size());
 
                         auto& batch_group = m_list_batch_groups[batch_id];
-                        batch_group->list_ents_prev = batch_group->list_ents_curr;
+
+                        for(uint j=0; j < list_merged_gm.size(); j++)
+                        {
+                            auto const merged_ent_id =
+                                    batch_group->list_merged_ent_ids[j];
+
+                            auto& merged_rd_gm =
+                                    list_render_data[merged_ent_id].GetGeometry();
+
+                            // TODO move instead of copy
+                            CopyGeometryBuffers(
+                                        list_merged_gm[j],
+                                        merged_rd_gm);
+
+                            merged_rd_gm.SetAllUpdated();
+                        }
+
+                        batch_group->list_ents_prev =
+                                batch_group->list_ents_curr;
                     }
                 }
 
                 // Create a desc of the current MultiFrame batch group state
-                auto list_batch_desc =
+                // rn list_batch_descs_new
+                auto list_batch_desc_next =
                         make_unique<std::vector<detail::BatchTask::BatchDesc>>();
 
                 for(auto const group : list_mf_batch_groups)
@@ -555,13 +613,12 @@ namespace ks
 
                     if(batch_group->rebuild)
                     {
-                        list_batch_desc->push_back(
+                        list_batch_desc_next->push_back(
                                     detail::BatchTask::BatchDesc{
                                         batch_group->uid,
                                         group,
-                                        batch_group->merged_ent,
-                                        batch_group->list_ents_curr,
-                                        batch_group->batch->GetBufferLayout()
+                                        batch_group->batch->GetBufferLayout(),
+                                        batch_group->list_ents_curr
                                     });
                     }
                 }
@@ -575,21 +632,88 @@ namespace ks
                 // Launch a new task
                 m_batch_task =
                         make_shared<detail::BatchTask>(
-                            std::move(list_batch_desc),
+                            std::move(list_batch_desc_next),
                             m_list_batch_geometry,
                             m_pre_merge_callback_mf);
 
                 m_thread_pool.PushBack(m_batch_task);
             }
 
+            void createMergedEntityForBatchGroup(Id batch_id)
+            {
+                auto& batch_group = m_list_batch_groups.Get(batch_id);
+                auto& batch = batch_group->batch;
 
+                // Create the merged Entity and RenderData
+                auto merged_ent_id = m_scene->CreateEntity();
+                auto& render_data =
+                        m_cmlist_render_data->Create(
+                            merged_ent_id,
+                            batch->GetKey(),
+                            batch->GetBufferLayout(),
+                            batch->GetUniformList(),
+                            batch->GetDrawStages(),
+                            batch->GetTransparency());
+
+                // TODO set geometry's RetainGeometry
+                auto& geometry = render_data.GetGeometry();
+
+                auto const vx_buff_count =
+                        batch->GetBufferLayout()->
+                            GetVertexBufferCount();
+
+
+                for(uint i=0; i < vx_buff_count; i++)
+                {
+                    geometry.GetVertexBuffers().
+                            push_back(make_unique<std::vector<u8>>());
+                }
+
+                if(batch->GetBufferLayout()->GetIsIndexed())
+                {
+                    geometry.GetIndexBuffer() =
+                            make_unique<std::vector<u8>>();
+                }
+
+                batch_group->list_merged_ent_ids.push_back(merged_ent_id);
+            }
+
+            void resizeMergedEntityListForBatchGroup(Id batch_id, uint new_size)
+            {
+                auto& batch_group = m_list_batch_groups.Get(batch_id);
+
+                sint create_merged_ent_count=
+                       new_size-(batch_group->list_merged_ent_ids.size());
+
+                if(create_merged_ent_count > 0)
+                {
+                    for(sint i=0; i < create_merged_ent_count; i++)
+                    {
+                        createMergedEntityForBatchGroup(batch_id);
+                    }
+                }
+                else
+                {
+                    create_merged_ent_count *= -1;
+                    for(sint i=0; i < create_merged_ent_count; i++)
+                    {
+                        m_scene->RemoveEntity(batch_group->list_merged_ent_ids.back());
+                        batch_group->list_merged_ent_ids.pop_back();
+                    }
+                }
+            }
 
             ecs::Scene<SceneKeyType>* const m_scene;
             RenderDataComponentList* const m_cmlist_render_data;
 
             BatchDataComponentList* m_cmlist_batch_data;
             RecycleIndexList<unique_ptr<BatchGroup>> m_list_batch_groups;
+
+            // * Used to store single geometry for the BatchTask
+            //   so that it can be accessed and manipulated
+            //   asynchronously by another thread
             std::vector<Geometry> m_list_batch_geometry;
+
             shared_ptr<detail::BatchTask> m_batch_task;
 
             BatchPreMergeCallback m_pre_merge_callback_sf;
