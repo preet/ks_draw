@@ -398,22 +398,37 @@ TEST_CASE("ks::draw::BatchSystem")
         REQUIRE(list_batch0_ents.size()==0);
     }
 
-    SECTION("PreMerge and PreTask Callbacks")
+    SECTION("PreMerge, PostMerge, and PreTask Callbacks")
     {
         SECTION("SingleFrame")
         {
-            uint callback_count=0;
+            uint pre_callback_count=0;
+            uint post_callback_count=0;
 
             // Pre merge callback
             batch_system->SetSFPreMergeCallback(
-                        [&](std::vector<ks::Id> const &list_ents_ref){
+                        [&]
+                        (ks::Id batch_id,
+                         std::vector<ks::Id> const &list_ents_ref)
+                        {
+                            (void)batch_id;
                             // Sort in descending order by Id
                             std::vector<ks::Id> list_ents = list_ents_ref;
                             std::sort(list_ents.begin(),list_ents.end());
                             std::reverse(list_ents.begin(),list_ents.end());
 
-                            callback_count++;
+                            pre_callback_count++;
                             return list_ents;
+                        });
+
+            // Post merge callback
+            batch_system->SetSFPostMergeCallback(
+                        [&]
+                        (ks::Id,
+                         std::vector<ks::Id> const &,
+                         std::vector<std::vector<ks::Id>> const &)
+                        {
+                            post_callback_count++;
                         });
 
             // Add Entity 1,2,3
@@ -434,7 +449,9 @@ TEST_CASE("ks::draw::BatchSystem")
 
             // Update
             batch_system->Update(tp0,tp1);
-            REQUIRE(callback_count==1);
+
+            // (verify pre merge callback)
+            REQUIRE(pre_callback_count==1);
 
             // Verify expected vertices
             auto list_vx1 = GenVertexData(3,1);
@@ -454,16 +471,33 @@ TEST_CASE("ks::draw::BatchSystem")
 
             auto& vertex_buffer = *(geometry_batch0.GetVertexBuffer(0));
             REQUIRE(list_vx == vertex_buffer);
+
+            // (verify post merge callback)
+            REQUIRE(post_callback_count==1);
         }
 
         SECTION("MultiFrame")
         {
             uint pre_task_callback_count=0;
             uint pre_merge_callback_count=0;
+            uint post_merge_callback_count=0;
+
+            // pre task callback
+            batch_system->SetMFPreTaskCallback(
+                        [&]
+                        ()
+                        {
+                            pre_task_callback_count++;
+                        });
 
             // Pre merge callback
             batch_system->SetMFPreMergeCallback(
-                        [&](std::vector<ks::Id> const &list_ents_ref){
+                        [&]
+                        (ks::Id batch_id,
+                         std::vector<ks::Id> const &list_ents_ref)
+                        {
+                            (void)batch_id;
+
                             // Sort in descending order by Id
                             std::vector<ks::Id> list_ents = list_ents_ref;
                             std::sort(list_ents.begin(),list_ents.end());
@@ -473,10 +507,16 @@ TEST_CASE("ks::draw::BatchSystem")
                             return list_ents;
                         });
 
-            batch_system->SetMFPreTaskCallback(
-                        [&](){
-                            pre_task_callback_count++;
+            // Post merge callback
+            batch_system->SetMFPostMergeCallback(
+                        [&]
+                        (ks::Id,
+                         std::vector<ks::Id> const &,
+                         std::vector<std::vector<ks::Id>> const &)
+                        {
+                            post_merge_callback_count++;
                         });
+
 
             // Add Entity 1,2,3
             auto const ent1 = scene->CreateEntity();
@@ -504,13 +544,22 @@ TEST_CASE("ks::draw::BatchSystem")
             REQUIRE(pre_task_callback_count==1);
             REQUIRE(pre_merge_callback_count==1);
 
+            // post merge occurs on the second update
+            REQUIRE(post_merge_callback_count==0);
+
             batch_system->Update(tp0,tp1);
             batch_system->WaitOnMultiFrameBatch();
+            REQUIRE(post_merge_callback_count==1);
             REQUIRE(pre_task_callback_count==2);
 
             // nothing to rebuild, so the merge callback shouldn't
             // be called
             REQUIRE(pre_merge_callback_count==1);
+            REQUIRE(post_merge_callback_count==1);
+
+            batch_system->Update(tp0,tp1);
+            batch_system->WaitOnMultiFrameBatch();
+            REQUIRE(post_merge_callback_count==1);
 
             // Verify expected vertices
             auto list_vx1 = GenVertexData(3,1);

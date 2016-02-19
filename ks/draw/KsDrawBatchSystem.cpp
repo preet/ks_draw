@@ -88,6 +88,8 @@ namespace ks
                 }
             }
 
+            // ============================================================= //
+
             // * Splits a list of single geometries into N merged
             //   geometries
             std::vector<std::vector<Geometry*>>
@@ -192,6 +194,36 @@ namespace ks
                 return list_list_single_gm;
             }
 
+            // ============================================================= //
+
+            std::vector<std::vector<Id>>
+            CreateSplitSingleGmEntIdLists(
+                    std::vector<Id> const &list_all_single_gm_ent_ids,
+                    std::vector<std::vector<Geometry*>> const &list_list_single_gms)
+            {
+                std::vector<std::vector<Id>> list_list_single_gm_ent_ids(
+                            list_list_single_gms.size());
+
+                uint index=0;
+
+                for(uint i=0; i < list_list_single_gm_ent_ids.size(); i++)
+                {
+                    auto const gm_count = list_list_single_gms[i].size();
+
+                    auto& list_single_gm_ent_ids = list_list_single_gm_ent_ids[i];
+                    list_single_gm_ent_ids.resize(gm_count);
+
+                    for(uint j=0; j < gm_count; j++)
+                    {
+                        list_single_gm_ent_ids[j] =
+                                list_all_single_gm_ent_ids[index];
+
+                        index++;
+                    }
+                }
+
+                return list_list_single_gm_ent_ids;
+            }
 
             // ============================================================= //
             // ============================================================= //
@@ -220,7 +252,13 @@ namespace ks
             std::vector<Geometry>&
             BatchTask::GetListMergedGeometry(uint index)
             {
-                return m_list_list_merged_gms[index];
+                return m_list_proc_data[index].list_merged_gms;
+            }
+
+            std::vector<std::vector<Id>> const &
+            BatchTask::GetSplitSingleGmEntIdLists(uint index) const
+            {
+                return m_list_proc_data[index].list_list_single_gm_ent_ids;
             }
 
             void BatchTask::Cancel()
@@ -243,12 +281,13 @@ namespace ks
 
                 auto& list_batch_desc = *m_list_batch_desc;
 
-                m_list_list_merged_gms.clear();
-                m_list_list_merged_gms.resize(list_batch_desc.size());
+                m_list_proc_data.clear();
+                m_list_proc_data.resize(list_batch_desc.size());
 
                 for(uint i=0; i < list_batch_desc.size(); i++)
                 {
                     auto& batch_desc = list_batch_desc[i];
+                    auto& proc_data = m_list_proc_data[i];
 
                     // Create the single geometry list
                     std::vector<Geometry*> list_single_gm_all;
@@ -257,10 +296,15 @@ namespace ks
 
                     // Allow a callback to modify the list of entities
                     // that will be merged together
+
+                    std::vector<Id> list_ents_curr;
+                    std::vector<Id>* list_ents_curr_ptr;
+
                     if(m_pre_merge_callback)
                     {
-                        auto list_ents_curr =
+                        list_ents_curr =
                                 m_pre_merge_callback(
+                                    batch_desc.batch_id,
                                     batch_desc.list_all_single_gm_ent_ids);
 
                         for(auto ent_id : list_ents_curr)
@@ -268,6 +312,8 @@ namespace ks
                             list_single_gm_all.push_back(
                                         &(m_list_batch_geometry[ent_id]));
                         }
+
+                        list_ents_curr_ptr = &list_ents_curr;
                     }
                     else
                     {
@@ -276,15 +322,17 @@ namespace ks
                             list_single_gm_all.push_back(
                                         &(m_list_batch_geometry[ent_id]));
                         }
+
+                        list_ents_curr_ptr = &(batch_desc.list_all_single_gm_ent_ids);
                     }
 
                     // Split into lists according to buffer block sizes
                     auto list_list_single_gm =
-                            CreateSplitSingleGeometryLists(
+                            detail::CreateSplitSingleGeometryLists(
                                 batch_desc.buffer_layout,
                                 list_single_gm_all);
 
-                    auto& list_merged_gms = m_list_list_merged_gms[i];
+                    auto& list_merged_gms = proc_data.list_merged_gms;
                     list_merged_gms.resize(list_list_single_gm.size());
 
                     for(uint j=0; j < list_list_single_gm.size(); j++)
@@ -311,6 +359,13 @@ namespace ks
                                     list_list_single_gm[j],
                                     &merged_gm);
                     }
+
+                    // For a potential post merge callback, save
+                    // the split single geometry entity ids
+                    proc_data.list_list_single_gm_ent_ids =
+                            detail::CreateSplitSingleGmEntIdLists(
+                                *list_ents_curr_ptr,
+                                list_list_single_gm);
                 }
 
                 this->onEnded();

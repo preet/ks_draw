@@ -26,14 +26,32 @@ namespace ks
 {
     namespace draw
     {
-
         // ============================================================= //
         // ============================================================= //
-
-        using BatchPreMergeCallback =
-            std::function<std::vector<Id>(std::vector<Id> const &)>;
 
         using BatchPreTaskCallback = std::function<void()>;
+
+        // return: std::vector<Id> modified list of batch data entity ids to merge
+        // arg0: Id: batch group id
+        // arg1: std::vector<Id> original list of batch data entity ids to merge
+        using BatchPreMergeCallback =
+            std::function<
+                std::vector<Id>(    Id,
+                                    std::vector<Id> const &     )
+            >;
+
+        // arg0: Id: batch group id
+        // arg1: std::vector<Id>: list merged ent ids
+        // arg2: std::vector<std::vector<Id>>: list split single ent ids
+        using BatchPostMergeCallback =
+            std::function<
+                void(   Id,
+                        std::vector<Id> const &,
+                        std::vector<std::vector<Id>> const &    )
+            >;
+
+        // ============================================================= //
+        // ============================================================= //
 
         namespace detail
         {
@@ -54,8 +72,25 @@ namespace ks
                     BufferLayout const * buffer_layout,
                     std::vector<Geometry*> const &list_single_gm_all);
 
+            std::vector<std::vector<Id>>
+            CreateSplitSingleGmEntIdLists(
+                    std::vector<Id> const &list_all_single_gm_ent_ids,
+                    std::vector<std::vector<Geometry*>> const &list_list_single_gms);
+
             class BatchTask final : public ks::ThreadPool::Task
             {
+                struct BatchProcData
+                {
+                    Id batch_id;
+
+                    // The list of merged geometries for this batch
+                    std::vector<Geometry> list_merged_gms;
+
+                    // The list of single geometry lists corresponding
+                    // to each individual merged geometry
+                    std::vector<std::vector<Id>> list_list_single_gm_ent_ids;
+                };
+
             public:
                 struct BatchDesc
                 {
@@ -63,8 +98,7 @@ namespace ks
                     Id batch_id;
                     BufferLayout const * buffer_layout;
 
-                    // The list of single geometries corresponding to
-                    // each merged RenderData
+                    // The list of all single geometries
                     std::vector<Id> list_all_single_gm_ent_ids;
                 };
 
@@ -78,6 +112,9 @@ namespace ks
 
                 std::vector<Geometry> & GetListMergedGeometry(uint index);
 
+                std::vector<std::vector<Id>> const &
+                GetSplitSingleGmEntIdLists(uint index) const;
+
                 void Cancel() override;
 
                 void Process();
@@ -89,9 +126,8 @@ namespace ks
                 std::vector<Geometry>& m_list_batch_geometry;
                 BatchPreMergeCallback m_pre_merge_callback;
 
-                // The list of merged geometries. Indicies in this
-                // list correspond to BatchDescs in m_list_batch_desc
-                std::vector<std::vector<Geometry>> m_list_list_merged_gms;
+                // Processed output/result data
+                std::vector<BatchProcData> m_list_proc_data;
             };
         }
 
@@ -257,6 +293,16 @@ namespace ks
                 m_pre_merge_callback_sf = nullptr;
             }
 
+            void SetSFPostMergeCallback(BatchPostMergeCallback callback)
+            {
+                m_post_merge_callback_sf = std::move(callback);
+            }
+
+            void ClearSFMergeSplitCallback()
+            {
+                m_post_merge_callback_sf = nullptr;
+            }
+
             void SetMFPreTaskCallback(BatchPreTaskCallback callback)
             {
                 m_pre_task_callback = std::move(callback);
@@ -275,6 +321,16 @@ namespace ks
             void ClearMFPreMergeCallback()
             {
                 m_pre_merge_callback_mf = nullptr;
+            }
+
+            void SetMFPostMergeCallback(BatchPostMergeCallback callback)
+            {
+                m_post_merge_callback_mf = std::move(callback);
+            }
+
+            void ClearMFPostMergeCallback()
+            {
+                m_post_merge_callback_mf = nullptr;
             }
 
             void Update(time_point const &,time_point const &) override
@@ -430,17 +486,24 @@ namespace ks
                         // that will be merged together. Note we don't save
                         // the modified list; the original batch_group->
                         // list_ents_curr must be kept to do proper diffs
+
+                        std::vector<Id> temp_list_ents_curr;
+                        std::vector<Id>* list_ents_curr_ptr;
+
                         if(m_pre_merge_callback_sf)
                         {
-                            auto list_ents_curr =
+                            temp_list_ents_curr =
                                     m_pre_merge_callback_sf(
+                                        group,
                                         batch_group->list_ents_curr);
 
-                            for(auto ent_id : list_ents_curr)
+                            for(auto ent_id : temp_list_ents_curr)
                             {
                                 list_single_gm_all.push_back(
                                             &(list_batch_data[ent_id].GetGeometry()));
                             }
+
+                            list_ents_curr_ptr = &temp_list_ents_curr;
                         }
                         else
                         {
@@ -449,8 +512,12 @@ namespace ks
                                 list_single_gm_all.push_back(
                                             &(list_batch_data[ent_id].GetGeometry()));
                             }
+
+                            list_ents_curr_ptr = &(batch_group->list_ents_curr);
                         }
 
+                        // Split single geometries based on buffer sizes
+                        // and create corresponding merged RenderDatas
                         auto list_list_single_gm =
                                 detail::CreateSplitSingleGeometryLists(
                                     batch->GetBufferLayout(),
@@ -459,6 +526,7 @@ namespace ks
                         resizeMergedEntityListForBatchGroup(
                                     group,list_list_single_gm.size());
 
+                        // Create merged geometries
                         for(uint i=0; i < list_list_single_gm.size(); i++)
                         {
                             auto& merged_gm =
@@ -472,6 +540,20 @@ namespace ks
                                         &merged_gm);
 
                             merged_gm.SetAllUpdated();
+                        }
+
+                        // Call the post merge callback
+                        if(m_post_merge_callback_sf)
+                        {
+                            auto list_list_single_ent_ids =
+                                    detail::CreateSplitSingleGmEntIdLists(
+                                        *list_ents_curr_ptr,
+                                        list_list_single_gm);
+
+                            m_post_merge_callback_sf(
+                                        group,
+                                        batch_group->list_merged_ent_ids,
+                                        list_list_single_ent_ids);
                         }
 
                         // Clear updates
@@ -552,7 +634,8 @@ namespace ks
                                  std::vector<BatchData>& list_batch_data,
                                  std::vector<RenderData>& list_render_data)
             {
-                if(!m_batch_task->IsFinished())
+
+                if(m_batch_task && !m_batch_task->IsFinished())
                 {
                     return;
                 }
@@ -560,83 +643,100 @@ namespace ks
                 updateBatchGroupsMF(list_mf_batch_groups,
                                     list_batch_data);
 
-                // Sync back the merged geometry from m_list_batch_geometry
-                // to its corresponding RenderData geometry
-                for(uint i=0; i < m_batch_task->GetListBatchDesc().size(); i++)
+                if(m_batch_task)
                 {
-                    auto const &batch_desc = m_batch_task->GetListBatchDesc()[i];
-                    auto const batch_id = batch_desc.batch_id;
-
-                    if(batch_id < m_list_batch_groups.GetList().size() &&
-                       m_list_batch_groups[batch_id] &&
-                       m_list_batch_groups[batch_id]->uid == batch_desc.uid)
+                    // Sync back the merged geometry from m_list_batch_geometry
+                    // to its corresponding RenderData geometry
+                    for(uint i=0; i < m_batch_task->GetListBatchDesc().size(); i++)
                     {
-                        auto& list_merged_gm =
-                                m_batch_task->GetListMergedGeometry(i);
+                        auto const &batch_desc = m_batch_task->GetListBatchDesc()[i];
+                        auto const batch_id = batch_desc.batch_id;
 
-                        // Ensure there are enough merged RenderData
-                        resizeMergedEntityListForBatchGroup(
-                                    batch_id,
-                                    list_merged_gm.size());
-
-                        auto& batch_group = m_list_batch_groups[batch_id];
-
-                        for(uint j=0; j < list_merged_gm.size(); j++)
+                        if(batch_id < m_list_batch_groups.GetList().size() &&
+                           m_list_batch_groups[batch_id] &&
+                           m_list_batch_groups[batch_id]->uid == batch_desc.uid)
                         {
-                            auto const merged_ent_id =
-                                    batch_group->list_merged_ent_ids[j];
+                            auto& list_merged_gm =
+                                    m_batch_task->GetListMergedGeometry(i);
 
-                            auto& merged_rd_gm =
-                                    list_render_data[merged_ent_id].GetGeometry();
+                            // Ensure there are enough merged RenderData
+                            resizeMergedEntityListForBatchGroup(
+                                        batch_id,
+                                        list_merged_gm.size());
 
-                            // TODO move instead of copy
-                            CopyGeometryBuffers(
-                                        list_merged_gm[j],
-                                        merged_rd_gm);
+                            auto& batch_group = m_list_batch_groups[batch_id];
 
-                            merged_rd_gm.SetAllUpdated();
+                            for(uint j=0; j < list_merged_gm.size(); j++)
+                            {
+                                auto const merged_ent_id =
+                                        batch_group->list_merged_ent_ids[j];
+
+                                auto& merged_rd_gm =
+                                        list_render_data[merged_ent_id].GetGeometry();
+
+                                // TODO move instead of copy
+                                CopyGeometryBuffers(
+                                            list_merged_gm[j],
+                                            merged_rd_gm);
+
+                                merged_rd_gm.SetAllUpdated();
+                            }
+
+                            // Call the post merge callback
+                            if(m_post_merge_callback_mf)
+                            {
+                                m_post_merge_callback_mf(
+                                            batch_id,
+                                            batch_group->list_merged_ent_ids,
+                                            m_batch_task->GetSplitSingleGmEntIdLists(i));
+                            }
+
+                            batch_group->list_ents_prev =
+                                    batch_group->list_ents_curr;
                         }
-
-                        batch_group->list_ents_prev =
-                                batch_group->list_ents_curr;
                     }
+
+                    m_batch_task=nullptr;
                 }
 
-                // Create a desc of the current MultiFrame batch group state
-                // rn list_batch_descs_new
-                auto list_batch_desc_next =
-                        make_unique<std::vector<detail::BatchTask::BatchDesc>>();
-
-                for(auto const group : list_mf_batch_groups)
+                if(!list_mf_batch_groups.empty())
                 {
-                    auto& batch_group = m_list_batch_groups[group];
+                    // Create a desc of the current MultiFrame batch group state
+                    // rn list_batch_descs_new
+                    auto list_batch_desc_next =
+                            make_unique<std::vector<detail::BatchTask::BatchDesc>>();
 
-                    if(batch_group->rebuild)
+                    for(auto const group : list_mf_batch_groups)
                     {
-                        list_batch_desc_next->push_back(
-                                    detail::BatchTask::BatchDesc{
-                                        batch_group->uid,
-                                        group,
-                                        batch_group->batch->GetBufferLayout(),
-                                        batch_group->list_ents_curr
-                                    });
+                        auto& batch_group = m_list_batch_groups[group];
+
+                        if(batch_group->rebuild)
+                        {
+                            list_batch_desc_next->push_back(
+                                        detail::BatchTask::BatchDesc{
+                                            batch_group->uid,
+                                            group,
+                                            batch_group->batch->GetBufferLayout(),
+                                            batch_group->list_ents_curr
+                                        });
+                        }
                     }
+
+                    // Invoke the PreTaskCallback if its valid
+                    if(m_pre_task_callback)
+                    {
+                        m_pre_task_callback();
+                    }
+
+                    // Launch a new task
+                    m_batch_task =
+                            make_shared<detail::BatchTask>(
+                                std::move(list_batch_desc_next),
+                                m_list_batch_geometry,
+                                m_pre_merge_callback_mf);
+
+                    m_thread_pool.PushBack(m_batch_task);
                 }
-
-                // Invoke the PreTaskCallback if its valid
-                if(m_pre_task_callback)
-                {
-                    m_pre_task_callback();
-                }
-
-                // Launch a new task
-                m_batch_task =
-                        make_shared<detail::BatchTask>(
-                            std::move(list_batch_desc_next),
-                            m_list_batch_geometry,
-                            m_pre_merge_callback_mf);
-
-                m_thread_pool.PushBack(m_batch_task);
             }
 
             void createMergedEntityForBatchGroup(Id batch_id)
@@ -716,9 +816,14 @@ namespace ks
 
             shared_ptr<detail::BatchTask> m_batch_task;
 
+            // * Single frame callbacks
             BatchPreMergeCallback m_pre_merge_callback_sf;
-            BatchPreMergeCallback m_pre_merge_callback_mf;
+            BatchPostMergeCallback m_post_merge_callback_sf;
+
+            // * Multi frame callbacks
             BatchPreTaskCallback m_pre_task_callback;
+            BatchPreMergeCallback m_pre_merge_callback_mf;
+            BatchPostMergeCallback m_post_merge_callback_mf;
 
             Id m_batch_group_uid_counter;
 
