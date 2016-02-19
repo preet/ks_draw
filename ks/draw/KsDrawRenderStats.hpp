@@ -30,8 +30,10 @@ namespace ks
 
             void ClearRenderStats();
             void ClearUpdateStats();
+            void SetCustomInfo(std::string custom_info);
             void GenRenderText();
             void GenUpdateText();
+            void GenCustomText();
 
             // collected during render
             double render_ms;
@@ -48,10 +50,14 @@ namespace ks
             uint texture_count;
             uint texture_mem_bytes;
 
+            // set by the rendersystem
+            std::string custom_info;
+
             std::string text_render_times;
             std::string text_update_times;
             std::string text_render_data;
             std::string text_update_data;
+            std::string text_custom;
         };
     }
 }

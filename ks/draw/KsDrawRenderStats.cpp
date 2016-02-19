@@ -70,5 +70,10 @@ namespace ks
             text_update_data += "buffer count/mem: " + ks::ToString(buffer_count) +
                            "/" + ks::ToString(buffer_mem_bytes) + " bytes";
         }
+
+        void RenderStats::GenCustomText()
+        {
+            text_custom = custom_info;
+        }
     }
 }

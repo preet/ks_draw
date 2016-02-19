@@ -219,6 +219,11 @@ namespace ks
                 m_enable_debug_text_draw_stage = show;
             }
 
+            void AddCustomDebugText(std::string msg)
+            {
+                m_stats.custom_info = std::move(msg);
+            }
+
             // ============================================================= //
 
             Id RegisterDrawStage(shared_ptr<DrawStage> draw_stage)
@@ -579,6 +584,7 @@ namespace ks
                             timing_end-timing_start).count()/1000.0;
 
                 m_stats.GenUpdateText();
+                m_stats.GenCustomText();
             }
 
 
@@ -642,9 +648,15 @@ namespace ks
                             m_stats.text_render_data+
                             m_stats.text_update_data;
 
+                    if(!m_stats.text_custom.empty())
+                    {
+                        render_debug_text.append("\n");
+                        render_debug_text.append(m_stats.text_custom);
+                    }
+
                     m_debug_text_draw_stage->SetText(
-                                glm::vec2{-1,-0.5},
-                                glm::vec2{0,-1},
+                                glm::vec2{-1,-0.66},
+                                glm::vec2{-0.33,-1},
                                 text_color,
                                 render_debug_text);
 
