@@ -222,11 +222,11 @@ TEST_CASE("ks::draw::DrawCallUpdater","[draw_draw_call_updater]")
         list_ent_rd_curr.emplace_back(1,list_render_data[1].GetUniqueId());
 
         task.Update(list_ent_rd_curr,list_render_data);
-        GeometryRanges* geometry = &(task.m_list_geometry_ranges[1]);
+        GeometryRanges* gm_ranges = &(task.m_list_geometry_ranges[1]);
         REQUIRE(list_render_data[1].GetGeometry().GetUpdatedGeometry()==false);
-        REQUIRE(geometry->valid == true);
-        REQUIRE(geometry->list_vx_ranges[0].size == size_bytes_3_vx);
-        REQUIRE(geometry->ix_range.size == size_bytes_3_ix);
+        REQUIRE(gm_ranges->valid == true);
+        REQUIRE(gm_ranges->list_vx_ranges[0].size == size_bytes_3_vx);
+        REQUIRE(gm_ranges->ix_range.size == size_bytes_3_ix);
 
         task.Sync(list_draw_calls);
         DrawCall* draw_call = &(list_draw_calls[1]);
@@ -241,8 +241,8 @@ TEST_CASE("ks::draw::DrawCallUpdater","[draw_draw_call_updater]")
         REQUIRE(list_render_data[1].GetGeometry().GetUpdatedGeometry());
 
         task.Update(list_ent_rd_curr,list_render_data);
-        REQUIRE(geometry->list_vx_ranges[0].size == size_bytes_5_vx);
-        REQUIRE(geometry->ix_range.size == size_bytes_3_ix);
+        REQUIRE(gm_ranges->list_vx_ranges[0].size == size_bytes_5_vx);
+        REQUIRE(gm_ranges->ix_range.size == size_bytes_3_ix);
 
         task.Sync(list_draw_calls);
         REQUIRE(draw_call->valid == true);
@@ -256,8 +256,8 @@ TEST_CASE("ks::draw::DrawCallUpdater","[draw_draw_call_updater]")
         REQUIRE(list_render_data[1].GetGeometry().GetUpdatedGeometry());
 
         task.Update(list_ent_rd_curr,list_render_data);
-        REQUIRE(geometry->list_vx_ranges[0].size == size_bytes_5_vx);
-        REQUIRE(geometry->ix_range.size == size_bytes_10_ix);
+        REQUIRE(gm_ranges->list_vx_ranges[0].size == size_bytes_5_vx);
+        REQUIRE(gm_ranges->ix_range.size == size_bytes_10_ix);
 
         task.Sync(list_draw_calls);
         REQUIRE(draw_call->valid == true);
@@ -268,8 +268,8 @@ TEST_CASE("ks::draw::DrawCallUpdater","[draw_draw_call_updater]")
         // Remove Entity 1
         list_ent_rd_curr.clear();
         task.Update(list_ent_rd_curr,list_render_data);
-        REQUIRE(geometry->valid == false);
-        REQUIRE(geometry->list_vx_ranges.empty());
+        REQUIRE(gm_ranges->valid == false);
+        REQUIRE(gm_ranges->list_vx_ranges.empty());
 
         task.Sync(list_draw_calls);
         REQUIRE(draw_call->valid == false);

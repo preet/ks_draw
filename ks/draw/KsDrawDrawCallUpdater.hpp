@@ -326,52 +326,52 @@ namespace ks
                 return true;
             }
 
-            void removeGeometryRanges(GeometryRanges& geometry)
+            void removeGeometryRanges(GeometryRanges& gm_ranges)
             {
                 bool empty;
 
                 // release buffer ranges
-                if(geometry.vx_ranges_valid)
+                if(gm_ranges.vx_ranges_valid)
                 {
-                    for(uint i=0; i < geometry.list_vx_ranges.size(); i++)
+                    for(uint i=0; i < gm_ranges.list_vx_ranges.size(); i++)
                     {
-                        geometry.buffer_layout->
+                        gm_ranges.buffer_layout->
                                 GetVertexBufferAllocator(i)->
-                                ReleaseRange(geometry.list_vx_ranges[i],empty);
+                                ReleaseRange(gm_ranges.list_vx_ranges[i],empty);
                     }
-//                    geometry.vx_ranges_valid = false;
                 }
 
-                if(geometry.ix_range_valid)
+                if(gm_ranges.ix_range_valid)
                 {
-                    geometry.buffer_layout->
+                    gm_ranges.buffer_layout->
                             GetIndexBufferAllocator()->
-                            ReleaseRange(geometry.ix_range,empty);
-
-//                    geometry.ix_range_valid = false;
+                            ReleaseRange(gm_ranges.ix_range,empty);
                 }
 
-                // reset all
-                geometry = GeometryRanges();
+                // reset all, sets:
+                // valid = false
+                // vx_ranges_valid = false
+                // ix_range_valid = false
+                gm_ranges = GeometryRanges();
             }
 
-            void createGeometryRanges(GeometryRanges& geometry, // rn geometry_ranges
-                                      Geometry& geometry_data) // rn geometry
+            void createGeometryRanges(GeometryRanges& gm_ranges,
+                                      Geometry& geometry)
             {
                 auto const keep_buff_data =
-                        geometry_data.GetRetainGeometry();
+                        geometry.GetRetainGeometry();
 
 
                 // Vertex Buffers
-                for(auto const index : geometry_data.GetUpdatedVertexBuffers())
+                for(auto const index : geometry.GetUpdatedVertexBuffers())
                 {
-                    auto& vx_range = geometry.list_vx_ranges[index];
-                    auto& vx_data = geometry_data.GetVertexBuffer(index);
+                    auto& vx_range = gm_ranges.list_vx_ranges[index];
+                    auto& vx_data = geometry.GetVertexBuffer(index);
 
                     // Release the previous ranges
-                    if(geometry.vx_ranges_valid) {
+                    if(gm_ranges.vx_ranges_valid) {
                         bool empty;
-                        geometry.buffer_layout->
+                        gm_ranges.buffer_layout->
                                 GetVertexBufferAllocator(index)->
                                     ReleaseRange(vx_range,empty);
                     }
@@ -379,7 +379,7 @@ namespace ks
                     // Acquire new range
                     bool created_buffer;
                     acquireVxBuffRange(
-                                geometry,
+                                gm_ranges,
                                 index,
                                 vx_data->size(),
                                 created_buffer);
@@ -411,31 +411,31 @@ namespace ks
 
                     m_list_buffers_to_sync.insert(buffer.get());
 
-                    geometry.vx_ranges_valid = true;
+                    gm_ranges.vx_ranges_valid = true;
                 }
 
                 // Index Buffer
-                if(geometry_data.GetUpdatedIndexBuffer())
+                if(geometry.GetUpdatedIndexBuffer())
                 {
-                    auto& ix_data = geometry_data.GetIndexBuffer();
+                    auto& ix_data = geometry.GetIndexBuffer();
 
                     // Release the previous range
-                    if(geometry.ix_range_valid) {
+                    if(gm_ranges.ix_range_valid) {
                         bool empty;
-                        geometry.buffer_layout->
+                        gm_ranges.buffer_layout->
                                 GetIndexBufferAllocator()->
-                                    ReleaseRange(geometry.ix_range,empty);
+                                    ReleaseRange(gm_ranges.ix_range,empty);
                     }
 
                     // Acquire new range
                     bool created_buffer;
                     acquireIxBuffRange(
-                                geometry,
+                                gm_ranges,
                                 ix_data->size(),
                                 created_buffer);
 
                     shared_ptr<gl::Buffer> buffer =
-                            geometry.ix_range.block->data;
+                            gm_ranges.ix_range.block->data;
 
                     if(created_buffer) {
                         m_list_buffers_to_init.insert(buffer.get());
@@ -447,16 +447,16 @@ namespace ks
                         buffer->UpdateBuffer(
                                     make_unique<gl::Buffer::UpdateKeepData>(
                                         gl::Buffer::Update::Defaults,
-                                        geometry.ix_range.start,
-                                        0,geometry.ix_range.size,
+                                        gm_ranges.ix_range.start,
+                                        0,gm_ranges.ix_range.size,
                                         ix_data.get()));
                     }
                     else {
                         buffer->UpdateBuffer(
                                     make_unique<gl::Buffer::UpdateFreeData>(
                                         gl::Buffer::Update::Defaults,
-                                        geometry.ix_range.start,
-                                        0,geometry.ix_range.size,
+                                        gm_ranges.ix_range.start,
+                                        0,gm_ranges.ix_range.size,
                                         ix_data.release()));
                     }
 
@@ -464,16 +464,16 @@ namespace ks
                 }
             }
 
-            void acquireVxBuffRange(GeometryRanges& geometry,
+            void acquireVxBuffRange(GeometryRanges& gm_ranges,
                                     uint const vx_buff_index,
                                     uint const list_vx_sz,
                                     bool& created_buffer)
             {
-                auto& vx_allocator = geometry.buffer_layout->
+                auto& vx_allocator = gm_ranges.buffer_layout->
                         GetVertexBufferAllocator(vx_buff_index);
 
                 VertexBufferAllocator::Range& vx_range =
-                        geometry.list_vx_ranges[vx_buff_index];
+                        gm_ranges.list_vx_ranges[vx_buff_index];
 
                 uint const block_sz = vx_allocator->GetBlockSize();
 
@@ -495,8 +495,8 @@ namespace ks
                     // TODO maybe pass back the buffer?
                     vx_allocator->CreateBlock(
                                 make_shared<gl::VertexBuffer>(
-                                    geometry.buffer_layout->GetVertexLayout(vx_buff_index),
-                                    geometry.buffer_layout->GetBufferUsage()));
+                                    gm_ranges.buffer_layout->GetVertexLayout(vx_buff_index),
+                                    gm_ranges.buffer_layout->GetBufferUsage()));
                     created_buffer = true;
 
                     vx_range = vx_allocator->AcquireRange(list_vx_sz);
@@ -512,14 +512,14 @@ namespace ks
                 }
             }
 
-            void acquireIxBuffRange(GeometryRanges& geometry,
+            void acquireIxBuffRange(GeometryRanges& gm_ranges,
                                     uint const list_ix_sz,
                                     bool& created_buffer)
             {
-                auto buff_usage = geometry.buffer_layout->
+                auto buff_usage = gm_ranges.buffer_layout->
                         GetBufferUsage();
 
-                auto& ix_allocator = geometry.buffer_layout->
+                auto& ix_allocator = gm_ranges.buffer_layout->
                         GetIndexBufferAllocator();
 
                 uint const block_sz = ix_allocator->GetBlockSize();
@@ -531,24 +531,24 @@ namespace ks
                 }
 
                 created_buffer = false;
-                geometry.ix_range = ix_allocator->AcquireRange(list_ix_sz);
+                gm_ranges.ix_range = ix_allocator->AcquireRange(list_ix_sz);
 
-                if(geometry.ix_range.size == 0) {
+                if(gm_ranges.ix_range.size == 0) {
                     ix_allocator->CreateBlock(
                                 make_shared<gl::IndexBuffer>(buff_usage));
 
                     created_buffer = true;
 
-                    geometry.ix_range = ix_allocator->AcquireRange(list_ix_sz);
-                    assert(geometry.ix_range.size == list_ix_sz);
+                    gm_ranges.ix_range = ix_allocator->AcquireRange(list_ix_sz);
+                    assert(gm_ranges.ix_range.size == list_ix_sz);
 
-                    geometry.ix_range.block->data->UpdateBuffer(
+                    gm_ranges.ix_range.block->data->UpdateBuffer(
                                 make_unique<gl::Buffer::Update>(
                                     gl::Buffer::Update::ReUpload,
                                     0,0,block_sz));
                 }
 
-                geometry.ix_range_valid = true;
+                gm_ranges.ix_range_valid = true;
             }
 
 
