@@ -70,61 +70,61 @@ namespace ks
 
         void DefaultDrawKey::SetShader(Id shader)
         {
-            m_key |= ((shader << k_sbit_shader) & (mask<k_sbit_shader,k_bits_shader>::value));
+            setData(mask<k_sbit_shader,k_bits_shader>::value, k_sbit_shader, shader);
         }
 
         void DefaultDrawKey::SetDepthConfig(Id depth_config)
         {
-            m_key |= ((depth_config << k_sbit_depth_config) & (mask<k_sbit_depth_config,k_bits_depth_config>::value));
+            setData(mask<k_sbit_depth_config,k_bits_depth_config>::value, k_sbit_depth_config, depth_config);
         }
 
         void DefaultDrawKey::SetBlendConfig(Id blend_config)
         {
-            m_key |= ((blend_config << k_sbit_blend_config) & (mask<k_sbit_blend_config,k_bits_blend_config>::value));
+            setData(mask<k_sbit_blend_config,k_bits_blend_config>::value, k_sbit_blend_config, blend_config);
         }
 
         void DefaultDrawKey::SetStencilConfig(Id stencil_config)
         {
-            m_key |= ((stencil_config << k_sbit_stencil_config) & (mask<k_sbit_stencil_config,k_bits_stencil_config>::value));
+            setData(mask<k_sbit_stencil_config,k_bits_stencil_config>::value, k_sbit_stencil_config, stencil_config);
         }
 
         void DefaultDrawKey::SetTextureSet(Id texture_set)
         {
-            m_key |= ((texture_set << k_sbit_texture_set) & (mask<k_sbit_texture_set,k_bits_texture_set>::value));
+            setData(mask<k_sbit_texture_set,k_bits_texture_set>::value, k_sbit_texture_set, texture_set);
         }
 
         void DefaultDrawKey::SetUniformSet(Id uniform_set)
         {
-            m_key |= ((uniform_set << k_sbit_uniform_set) & (mask<k_sbit_uniform_set,k_bits_uniform_set>::value));
+            setData(mask<k_sbit_uniform_set,k_bits_uniform_set>::value, k_sbit_uniform_set, uniform_set);
         }
 
-        void DefaultDrawKey::SetPrimitive(gl::Primitive primitive)
+        void DefaultDrawKey::SetPrimitive(ks::gl::Primitive primitive)
         {
             Id primitive_int=0;
 
-            if(primitive == gl::Primitive::Triangles) {
+            if(primitive == ks::gl::Primitive::Triangles) {
                 primitive_int = 0;
             }
-            else if(primitive == gl::Primitive::TriangleFan) {
+            else if(primitive == ks::gl::Primitive::TriangleFan) {
                 primitive_int = 1;
             }
-            else if(primitive == gl::Primitive::TriangleStrip) {
+            else if(primitive == ks::gl::Primitive::TriangleStrip) {
                 primitive_int = 2;
             }
-            else if(primitive == gl::Primitive::Lines) {
+            else if(primitive == ks::gl::Primitive::Lines) {
                 primitive_int = 3;
             }
-            else if(primitive == gl::Primitive::LineLoop) {
+            else if(primitive == ks::gl::Primitive::LineLoop) {
                 primitive_int = 4;
             }
-            else if(primitive == gl::Primitive::LineStrip) {
+            else if(primitive == ks::gl::Primitive::LineStrip) {
                 primitive_int = 5;
             }
-            else if(primitive == gl::Primitive::Points) {
+            else if(primitive == ks::gl::Primitive::Points) {
                 primitive_int = 6;
             }
 
-            m_key |= ((primitive_int << k_sbit_primitive) & (mask<k_sbit_primitive,k_bits_primitive>::value));
+            setData(mask<k_sbit_primitive,k_bits_primitive>::value, k_sbit_primitive, primitive_int);
         }
     }
 }

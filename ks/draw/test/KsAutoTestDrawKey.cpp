@@ -31,7 +31,7 @@ TEST_CASE("KsTestDrawKey","[kstestdrawkey]")
     key.SetStencilConfig(5);
     key.SetTextureSet(6);
     key.SetUniformSet(7);
-    key.SetPrimitive(ks::gl::Primitive::Triangles);
+    key.SetPrimitive(ks::gl::Primitive::Lines);
 
     REQUIRE(key.GetShader() == 2);
     REQUIRE(key.GetDepthConfig() == 3);
@@ -39,5 +39,23 @@ TEST_CASE("KsTestDrawKey","[kstestdrawkey]")
     REQUIRE(key.GetStencilConfig() == 5);
     REQUIRE(key.GetTextureSet() == 6);
     REQUIRE(key.GetUniformSet() == 7);
+    REQUIRE(key.GetPrimitive() == gl::Primitive::Lines);
+
+    // Set and check again to make sure old parameters
+    // are cleared before new ones are set
+    key.SetShader(0);
+    key.SetDepthConfig(0);
+    key.SetBlendConfig(0);
+    key.SetStencilConfig(0);
+    key.SetTextureSet(0);
+    key.SetUniformSet(0);
+    key.SetPrimitive(ks::gl::Primitive::Triangles);
+
+    REQUIRE(key.GetShader() == 0);
+    REQUIRE(key.GetDepthConfig() == 0);
+    REQUIRE(key.GetBlendConfig() == 0);
+    REQUIRE(key.GetStencilConfig() == 0);
+    REQUIRE(key.GetTextureSet() == 0);
+    REQUIRE(key.GetUniformSet() == 0);
     REQUIRE(key.GetPrimitive() == gl::Primitive::Triangles);
 }

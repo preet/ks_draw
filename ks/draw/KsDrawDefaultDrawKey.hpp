@@ -66,11 +66,6 @@ namespace ks
             static const std::vector<gl::Primitive> k_list_prim_to_int;
 
         public:
-            enum class UpdatePriority : u8 {
-                SingleFrame,
-                MultiFrame
-            };
-
             Id GetShader() const;
             Id GetDepthConfig() const;
             Id GetBlendConfig() const;
@@ -98,6 +93,12 @@ namespace ks
             }
 
         private:
+            void setData(u64 mask, u8 sbit, Id data)
+            {
+                m_key &= (~mask);
+                m_key |= ((data << sbit) & mask);
+            }
+
             Id m_key{0};
         };
 
