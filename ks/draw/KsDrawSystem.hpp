@@ -17,17 +17,12 @@
 #ifndef KS_DRAW_SYSTEM_HPP
 #define KS_DRAW_SYSTEM_HPP
 
-#include <chrono>
 #include <ks/KsGlobal.hpp>
 
 namespace ks
 {
     namespace draw
     {
-        using time_point =
-            std::chrono::time_point<
-                std::chrono::high_resolution_clock>;
-
         class System
         {
         public:
@@ -37,8 +32,8 @@ namespace ks
 
             virtual std::string GetDesc() const = 0;
 
-            virtual void Update(time_point const &prev_time,
-                                time_point const &curr_time) = 0;
+            virtual void Update(TimePoint const &prev_time,
+                                TimePoint const &curr_time) = 0;
         };
     }
 }

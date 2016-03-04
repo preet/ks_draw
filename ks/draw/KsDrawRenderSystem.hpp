@@ -464,8 +464,8 @@ namespace ks
 
             // ============================================================= //
 
-            void Update(time_point const &,
-                        time_point const &)
+            void Update(TimePoint const &,
+                        TimePoint const &)
             {
                 m_stats.ClearUpdateStats();
                 auto timing_start = std::chrono::high_resolution_clock::now();

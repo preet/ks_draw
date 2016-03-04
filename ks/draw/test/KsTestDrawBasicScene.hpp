@@ -164,8 +164,8 @@ namespace test
                 // Update
                 signal_before_update.Emit();
 
-                draw::time_point a;
-                draw::time_point b;
+                TimePoint a;
+                TimePoint b;
 
                 m_batch_system->Update(a,b);
                 m_render_system->Update(a,b);

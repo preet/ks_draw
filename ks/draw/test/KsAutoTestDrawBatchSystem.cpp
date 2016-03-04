@@ -231,8 +231,8 @@ TEST_CASE("ks::draw::BatchSystem")
 {
     using namespace test_draw_batch_system;
 
-    ks::draw::time_point tp0;
-    ks::draw::time_point tp1;
+    ks::TimePoint tp0;
+    ks::TimePoint tp1;
 
     ks::shared_ptr<Scene> scene =
             ks::make_object<Scene>(

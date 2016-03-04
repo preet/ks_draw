@@ -131,8 +131,8 @@ namespace test
             return "BodySystem";
         }
 
-        void Update(draw::time_point const &,
-                    draw::time_point const &)
+        void Update(TimePoint const &,
+                    TimePoint const &)
         {
             auto& list_body_data =
                     static_cast<ecs::ComponentList<SceneKey,BodyData>*>(
@@ -201,8 +201,8 @@ namespace test
             return "CollisionSystem";
         }
 
-        void Update(draw::time_point const &,
-                    draw::time_point const &)
+        void Update(TimePoint const &,
+                    TimePoint const &)
         {
             auto& list_collision_data =
                     static_cast<ecs::ComponentList<SceneKey,CollisionData>*>(
@@ -800,7 +800,7 @@ namespace test
                 m_setup = true;
             }
 
-            draw::time_point a,b;
+            TimePoint a,b;
             m_body_system->Update(a,b);
             m_collision_system->Update(a,b);
         }

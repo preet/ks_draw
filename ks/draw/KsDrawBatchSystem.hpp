@@ -333,7 +333,7 @@ namespace ks
                 m_post_merge_callback_mf = nullptr;
             }
 
-            void Update(time_point const &,time_point const &) override
+            void Update(TimePoint const &,TimePoint const &) override
             {
                 // Clear previous list of Batchable entities
                 auto const num_batch_groups =
