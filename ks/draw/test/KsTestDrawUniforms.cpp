@@ -226,7 +226,7 @@ namespace test
 
             // Create the update timer
             m_uf_update_timer =
-                    make_object<CallbackTimer>(
+                    MakeObject<CallbackTimer>(
                         m_scene->GetEventLoop(),
                         Milliseconds(1000),
                         [list_uniforms]()
@@ -280,7 +280,7 @@ int main(int argc, char* argv[])
 
     // Create application
     shared_ptr<gui::Application> app =
-            make_object<gui::Application>();
+            MakeObject<gui::Application>();
 
     // Create window
     gui::Window::Attributes win_attribs;
@@ -294,12 +294,12 @@ int main(int argc, char* argv[])
                 win_props);
 
     shared_ptr<test::Scene> scene =
-            make_object<test::Scene>(
+            MakeObject<test::Scene>(
                 app,
                 window);
 
     shared_ptr<test::Updater> test_updater =
-            make_object<test::Updater>(
+            MakeObject<test::Updater>(
                 app->GetEventLoop(),
                 scene);
 

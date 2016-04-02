@@ -278,7 +278,7 @@ int main(int argc, char* argv[])
     (void)argv;
 
     // Create application
-    test::app = make_object<gui::Application>();
+    test::app = MakeObject<gui::Application>();
 
     // Create window
     gui::Window::Attributes win_attribs;
@@ -292,12 +292,12 @@ int main(int argc, char* argv[])
                 win_props);
 
     shared_ptr<test::Scene> scene =
-            make_object<test::Scene>(
+            MakeObject<test::Scene>(
                 test::app,
                 window);
 
     shared_ptr<test::Updater> test_updater =
-            make_object<test::Updater>(
+            MakeObject<test::Updater>(
                 test::app->GetEventLoop(),
                 scene);
 

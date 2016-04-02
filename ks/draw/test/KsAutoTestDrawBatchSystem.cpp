@@ -235,7 +235,7 @@ TEST_CASE("ks::draw::BatchSystem")
     ks::TimePoint tp1;
 
     ks::shared_ptr<Scene> scene =
-            ks::make_object<Scene>(
+            ks::MakeObject<Scene>(
                 ks::make_shared<ks::EventLoop>());
 
     auto& render_system = scene->m_render_system;

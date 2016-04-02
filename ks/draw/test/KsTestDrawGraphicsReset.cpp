@@ -353,7 +353,7 @@
 //    (void)argv;
 
 //    // Create application
-//    test::app = make_object<gui::Application>();
+//    test::app = MakeObject<gui::Application>();
 
 //    // Create the render thread
 //    shared_ptr<EventLoop> render_evl = make_shared<EventLoop>();
@@ -378,13 +378,13 @@
 //                win_props);
 
 //    shared_ptr<test::Scene> scene =
-//            make_object<test::Scene>(
+//            MakeObject<test::Scene>(
 //                scene_evl,
 //                window,
 //                Milliseconds(500));
 
 //    shared_ptr<test::Updater> test_updater =
-//            make_object<test::Updater>(
+//            MakeObject<test::Updater>(
 //                scene_evl,
 //                scene);
 
